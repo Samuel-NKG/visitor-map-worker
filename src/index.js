@@ -6,14 +6,13 @@
  *
  * Geo strategy:
  *   Global: Cloudflare request.cf
- *   China:  pconline (国内库) -> ip-api -> cf, plus local city lat/lng table
+ *   China:  pconline (GBK decoded) -> ip-api -> cf, plus local city lat/lng table
  *
  * Binding: KV VISITORS
  */
 
 const MAX_CITIES = 120;
 
-/** Major CN cities: English name -> [lat, lng] (also used after normalizing Chinese names) */
 const CN_CITY_COORDS = {
   Beijing: [39.9042, 116.4074],
   Shanghai: [31.2304, 121.4737],
@@ -85,75 +84,74 @@ const CN_CITY_COORDS = {
   Taipei: [25.033, 121.5654],
 };
 
-/** Chinese city / alias -> English key in CN_CITY_COORDS */
 const CN_NAME_MAP = {
-  北京: "Beijing",
-  上海: "Shanghai",
-  广州: "Guangzhou",
-  深圳: "Shenzhen",
-  杭州: "Hangzhou",
-  宁波: "Ningbo",
-  南京: "Nanjing",
-  苏州: "Suzhou",
-  无锡: "Wuxi",
-  西安: "Xi'an",
-  成都: "Chengdu",
-  重庆: "Chongqing",
-  武汉: "Wuhan",
-  长沙: "Changsha",
-  郑州: "Zhengzhou",
-  天津: "Tianjin",
-  青岛: "Qingdao",
-  大连: "Dalian",
-  厦门: "Xiamen",
-  福州: "Fuzhou",
-  合肥: "Hefei",
-  济南: "Jinan",
-  沈阳: "Shenyang",
-  哈尔滨: "Harbin",
-  长春: "Changchun",
-  昆明: "Kunming",
-  南宁: "Nanning",
-  贵阳: "Guiyang",
-  南昌: "Nanchang",
-  太原: "Taiyuan",
-  石家庄: "Shijiazhuang",
-  兰州: "Lanzhou",
-  银川: "Yinchuan",
-  西宁: "Xining",
-  呼和浩特: "Hohhot",
-  乌鲁木齐: "Urumqi",
-  拉萨: "Lhasa",
-  海口: "Haikou",
-  三亚: "Sanya",
-  东莞: "Dongguan",
-  佛山: "Foshan",
-  珠海: "Zhuhai",
-  中山: "Zhongshan",
-  惠州: "Huizhou",
-  温州: "Wenzhou",
-  嘉兴: "Jiaxing",
-  绍兴: "Shaoxing",
-  台州: "Taizhou",
-  金华: "Jinhua",
-  徐州: "Xuzhou",
-  常州: "Changzhou",
-  南通: "Nantong",
-  扬州: "Yangzhou",
-  盐城: "Yancheng",
-  保定: "Baoding",
-  唐山: "Tangshan",
-  洛阳: "Luoyang",
-  芜湖: "Wuhu",
-  泉州: "Quanzhou",
-  潍坊: "Weifang",
-  淄博: "Zibo",
-  临沂: "Linyi",
-  邯郸: "Handan",
-  桂林: "Guilin",
-  香港: "Hong Kong",
-  澳门: "Macau",
-  台北: "Taipei",
+  "\u5317\u4eac": "Beijing",
+  "\u4e0a\u6d77": "Shanghai",
+  "\u5e7f\u5dde": "Guangzhou",
+  "\u6df1\u5733": "Shenzhen",
+  "\u676d\u5dde": "Hangzhou",
+  "\u5b81\u6ce2": "Ningbo",
+  "\u5357\u4eac": "Nanjing",
+  "\u82cf\u5dde": "Suzhou",
+  "\u65e0\u9521": "Wuxi",
+  "\u897f\u5b89": "Xi'an",
+  "\u6210\u90fd": "Chengdu",
+  "\u91cd\u5e86": "Chongqing",
+  "\u6b66\u6c49": "Wuhan",
+  "\u957f\u6c99": "Changsha",
+  "\u90d1\u5dde": "Zhengzhou",
+  "\u5929\u6d25": "Tianjin",
+  "\u9752\u5c9b": "Qingdao",
+  "\u5927\u8fde": "Dalian",
+  "\u53a6\u95e8": "Xiamen",
+  "\u798f\u5dde": "Fuzhou",
+  "\u5408\u80a5": "Hefei",
+  "\u6d4e\u5357": "Jinan",
+  "\u6c88\u9633": "Shenyang",
+  "\u54c8\u5c14\u6ee8": "Harbin",
+  "\u957f\u6625": "Changchun",
+  "\u6606\u660e": "Kunming",
+  "\u5357\u5b81": "Nanning",
+  "\u8d35\u9633": "Guiyang",
+  "\u5357\u660c": "Nanchang",
+  "\u592a\u539f": "Taiyuan",
+  "\u77f3\u5bb6\u5e84": "Shijiazhuang",
+  "\u5170\u5dde": "Lanzhou",
+  "\u94f6\u5ddd": "Yinchuan",
+  "\u897f\u5b81": "Xining",
+  "\u547c\u548c\u6d69\u7279": "Hohhot",
+  "\u4e4c\u9c81\u6728\u9f50": "Urumqi",
+  "\u62c9\u8428": "Lhasa",
+  "\u6d77\u53e3": "Haikou",
+  "\u4e09\u4e9a": "Sanya",
+  "\u4e1c\u839e": "Dongguan",
+  "\u4f5b\u5c71": "Foshan",
+  "\u73e0\u6d77": "Zhuhai",
+  "\u4e2d\u5c71": "Zhongshan",
+  "\u60e0\u5dde": "Huizhou",
+  "\u6e29\u5dde": "Wenzhou",
+  "\u5609\u5174": "Jiaxing",
+  "\u7ecd\u5174": "Shaoxing",
+  "\u53f0\u5dde": "Taizhou",
+  "\u91d1\u534e": "Jinhua",
+  "\u5f90\u5dde": "Xuzhou",
+  "\u5e38\u5dde": "Changzhou",
+  "\u5357\u901a": "Nantong",
+  "\u626c\u5dde": "Yangzhou",
+  "\u76d0\u57ce": "Yancheng",
+  "\u4fdd\u5b9a": "Baoding",
+  "\u5510\u5c71": "Tangshan",
+  "\u6d1b\u9633": "Luoyang",
+  "\u829c\u6e56": "Wuhu",
+  "\u6cc9\u5dde": "Quanzhou",
+  "\u6f4d\u574a": "Weifang",
+  "\u6dc4\u535a": "Zibo",
+  "\u4e34\u6c82": "Linyi",
+  "\u90af\u90f8": "Handan",
+  "\u6842\u6797": "Guilin",
+  "\u9999\u6e2f": "Hong Kong",
+  "\u6fb3\u95e8": "Macau",
+  "\u53f0\u5317": "Taipei",
 };
 
 export default {
@@ -211,11 +209,8 @@ async function handleHit(request, env, corsHeaders) {
       if (Number.isFinite(Number(body.lat))) lat = Number(body.lat);
       if (Number.isFinite(Number(body.lng))) lng = Number(body.lng);
     }
-  } catch {
-    // no body
-  }
+  } catch {}
 
-  // Always try to refine for CN — CF/ip-api often map 地级市 -> 省会
   if (clientIp && (countryCode === "CN" || countryCode === "HK" || countryCode === "MO" || countryCode === "TW" || !city)) {
     const refined = await refineGeo(clientIp, countryCode);
     if (refined) {
@@ -228,7 +223,6 @@ async function handleHit(request, env, corsHeaders) {
     }
   }
 
-  // Normalize CN names + attach accurate coordinates from local table
   const normalized = normalizeCnCity(city);
   if (normalized) {
     city = normalized;
@@ -239,6 +233,9 @@ async function handleHit(request, env, corsHeaders) {
     }
   }
 
+  if (looksLikeMojibake(city) || isProvinceOnlyName(city)) city = "";
+  if (!city && region && !looksLikeMojibake(region) && !isProvinceOnlyName(region)) city = region;
+
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     lat = null;
     lng = null;
@@ -248,7 +245,9 @@ async function handleHit(request, env, corsHeaders) {
     return json({ error: "Unable to resolve location" }, 400, corsHeaders);
   }
 
-  const key = `${countryCode || country}|${city || region || "Unknown"}`;
+  const displayCity =
+    city || (!looksLikeMojibake(region) && !isProvinceOnlyName(region) ? region : "") || "Unknown";
+  const key = (countryCode || country) + "|" + displayCity;
   const now = Date.now();
 
   let list = [];
@@ -259,7 +258,7 @@ async function handleHit(request, env, corsHeaders) {
 
   list.unshift({
     key,
-    city: city || region || "Unknown",
+    city: displayCity,
     region: region || "",
     country: country || "",
     countryCode: countryCode || "",
@@ -271,59 +270,85 @@ async function handleHit(request, env, corsHeaders) {
   if (list.length > MAX_CITIES) list = list.slice(0, MAX_CITIES);
   await env.VISITORS.put("cities", JSON.stringify(list));
 
-  return json(
-    { ok: true, city: city || region || "Unknown", region: region || "", countryCode },
-    200,
-    corsHeaders
-  );
+  return json({ ok: true, city: displayCity, region: region || "", countryCode }, 200, corsHeaders);
 }
 
 function normalizeCnCity(name) {
   if (!name) return "";
   let s = String(name).trim();
-  // strip 市/地区/自治州 suffix
   s = s.replace(/(特别行政区|壮族自治区|回族自治区|维吾尔自治区|自治区|省|市|地区|州)$/u, "");
   if (CN_NAME_MAP[s]) return CN_NAME_MAP[s];
-  // already English?
   if (CN_CITY_COORDS[s]) return s;
-  // try title case match
   const title = s.charAt(0).toUpperCase() + s.slice(1);
   if (CN_CITY_COORDS[title]) return title;
-  if (s === "Xi'an" || s === "Xi’an") return "Xi'an";
-  return s; // keep as-is (may be English from ip-api)
+  if (s === "Xi'an" || s === "Xi\u2019an") return "Xi'an";
+  return s;
+}
+
+function looksLikeMojibake(s) {
+  if (!s) return true;
+  const t = String(s);
+  if (/\uFFFD/.test(t)) return true;
+  const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latin = (t.match(/[A-Za-z]/g) || []).length;
+  if (cjk === 0 && latin === 0) return true;
+  if (/[^\x00-\x7F\u4e00-\u9fff\s\-']/g.test(t) && cjk < 2 && latin < 2) return true;
+  return false;
+}
+
+function isProvinceOnlyName(s) {
+  const t = String(s || "").trim();
+  return /(?:\u7701|\u81ea\u6cbb\u533a)$/.test(t) || /(?:Province)$/i.test(t);
 }
 
 async function refineGeo(ip, hintCountry) {
   if (!ip || ip.startsWith("127.") || ip === "::1") return null;
 
-  // 1) 太平洋电脑网 — 国内库，对中国城市更准
   try {
     const res = await fetch(
-      `https://whois.pconline.com.cn/ipJson.jsp?ip=${encodeURIComponent(ip)}&json=true`,
-      { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json,text/plain,*/*" } }
+      "https://whois.pconline.com.cn/ipJson.jsp?ip=" + encodeURIComponent(ip) + "&json=true",
+      { headers: { "User-Agent": "Mozilla/5.0", Accept: "*/*" } }
     );
     if (res.ok) {
-      const text = await res.text();
-      // sometimes returned as GBK-ish / with padding — try JSON parse
+      const buf = await res.arrayBuffer();
+      let text = "";
+      try {
+        text = new TextDecoder("gb18030").decode(buf);
+      } catch {
+        try {
+          text = new TextDecoder("gbk").decode(buf);
+        } catch {
+          text = new TextDecoder("utf-8").decode(buf);
+        }
+      }
       let data = null;
       try {
         data = JSON.parse(text);
       } catch {
         const m = text.match(/\{[\s\S]*\}/);
-        if (m) data = JSON.parse(m[0]);
+        if (m) {
+          try {
+            data = JSON.parse(m[0]);
+          } catch {}
+        }
       }
       if (data && (data.city || data.pro || data.addr)) {
         let city = (data.city || "").toString().trim();
         let region = (data.pro || "").toString().trim();
-        // city field sometimes is empty and addr has "陕西省西安市"
-        if (!city && data.addr) {
+        if ((!city || isProvinceOnlyName(city) || looksLikeMojibake(city)) && data.addr) {
           const addr = String(data.addr);
-          const cm = addr.match(/([\u4e00-\u9fa5]{2,10}?)(?:市|地区|州)/);
+          const cm = addr.match(/([\u4e00-\u9fa5]{2,12}?)(?:\u5e02|\u5730\u533a|\u5dde)/);
           if (cm) city = cm[1];
+        }
+        if (looksLikeMojibake(city)) city = "";
+        if (looksLikeMojibake(region)) region = "";
+        if (isProvinceOnlyName(city)) {
+          if (!region) region = city;
+          city = "";
         }
         if (city || region) {
           return {
-            city: city || region,
+            city: city || "",
             region,
             country: "China",
             countryCode: "CN",
@@ -337,10 +362,11 @@ async function refineGeo(ip, hintCountry) {
     console.error("pconline refine failed", e);
   }
 
-  // 2) ip-api.com
   try {
     const res = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city,lat,lon`,
+      "http://ip-api.com/json/" +
+        encodeURIComponent(ip) +
+        "?fields=status,country,countryCode,regionName,city,lat,lon",
       { headers: { Accept: "application/json" } }
     );
     if (res.ok) {
@@ -383,12 +409,11 @@ async function handleCities(env, corsHeaders) {
   return json({ cities }, 200, corsHeaders);
 }
 
-function json(data, status = 200, extraHeaders = {}) {
+function json(data, status, extraHeaders) {
+  status = status || 200;
+  extraHeaders = extraHeaders || {};
   return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...extraHeaders,
-    },
+    status: status,
+    headers: Object.assign({ "Content-Type": "application/json" }, extraHeaders),
   });
 }
