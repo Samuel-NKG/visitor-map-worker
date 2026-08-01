@@ -2,7 +2,7 @@
  * Visitor City Tracker - Cloudflare Worker
  *
  * Endpoints:
- *   POST /hit     - Record a visitor city (called by frontend)
+ *   POST /hit     - Record a visitor (geo from Cloudflare request.cf)
  *   GET  /cities  - Get recent visitor cities (for the map)
  *
  * Bindings needed:
@@ -10,14 +10,13 @@
  *   - Environment variable (optional): ALLOWED_ORIGIN = https://www.samuelnkg.com
  */
 
-const MAX_CITIES = 80; // Keep only the latest N cities
+const MAX_CITIES = 120; // Keep only the latest N visits
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin") || "";
 
-    // CORS
     const allowedOrigin = env.ALLOWED_ORIGIN || "*";
     const corsHeaders = {
       "Access-Control-Allow-Origin":
@@ -49,33 +48,36 @@ export default {
 };
 
 async function handleHit(request, env, corsHeaders) {
-  let body;
+  // Prefer Cloudflare edge geo (works worldwide, including mainland China)
+  const cf = request.cf || {};
+
+  let city = (cf.city || "").toString().trim().slice(0, 64);
+  let countryCode = (cf.country || "").toString().trim().slice(0, 8).toUpperCase();
+  let country = countryCode; // CF gives ISO code; frontend can show code fine
+  let lat = Number(cf.latitude);
+  let lng = Number(cf.longitude);
+
+  // Optional body override (rarely needed)
   try {
-    body = await request.json();
+    const body = await request.json();
+    if (body && typeof body === "object") {
+      if (body.city) city = String(body.city).trim().slice(0, 64);
+      if (body.country) country = String(body.country).trim().slice(0, 64);
+      if (body.countryCode) countryCode = String(body.countryCode).trim().slice(0, 8).toUpperCase();
+      if (Number.isFinite(Number(body.lat))) lat = Number(body.lat);
+      if (Number.isFinite(Number(body.lng))) lng = Number(body.lng);
+    }
   } catch {
-    return json({ error: "Invalid JSON" }, 400, corsHeaders);
+    // no body is fine
   }
 
-  const city = (body.city || "").trim().slice(0, 64);
-  const country = (body.country || "").trim().slice(0, 64);
-  const countryCode = (body.countryCode || "").trim().slice(0, 8).toUpperCase();
-
-  // Optional coordinates (from IP geolocation)
-  let lat = Number(body.lat);
-  let lng = Number(body.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     lat = null;
     lng = null;
-  } else {
-    // basic sanity range
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      lat = null;
-      lng = null;
-    }
   }
 
-  if (!city && !country && lat === null) {
-    return json({ error: "Missing city/country" }, 400, corsHeaders);
+  if (!city && !countryCode && lat === null) {
+    return json({ error: "Unable to resolve location" }, 400, corsHeaders);
   }
 
   const key = `${countryCode || country}|${city || "Unknown"}`;
@@ -87,7 +89,6 @@ async function handleHit(request, env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  // Always record every visit
   list.unshift({
     key,
     city: city || "Unknown",
@@ -104,7 +105,7 @@ async function handleHit(request, env, corsHeaders) {
 
   await env.VISITORS.put("cities", JSON.stringify(list));
 
-  return json({ ok: true }, 200, corsHeaders);
+  return json({ ok: true, city: city || "Unknown", countryCode }, 200, corsHeaders);
 }
 
 async function handleCities(env, corsHeaders) {
