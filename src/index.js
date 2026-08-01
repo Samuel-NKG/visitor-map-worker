@@ -1,12 +1,9 @@
 /**
  * Visitor City Tracker - Cloudflare Worker
  *
- * POST /hit    - Record a visitor
- * GET  /cities - List recent cities
- *
- * Geo strategy:
- *   Global: Cloudflare request.cf
- *   China:  pconline (GBK decoded) -> ip-api -> cf, plus local city lat/lng table
+ * POST /hit     - Record a visitor
+ * GET  /cities  - List recent cities (auto-migrates bad historical names)
+ * GET|POST /cleanup - Force rewrite historical logs
  *
  * Binding: KV VISITORS
  */
@@ -178,6 +175,9 @@ export default {
       if (url.pathname === "/cities" && request.method === "GET") {
         return await handleCities(env, corsHeaders);
       }
+      if (url.pathname === "/cleanup" && (request.method === "POST" || request.method === "GET")) {
+        return await handleCleanup(env, corsHeaders);
+      }
       return json({ error: "Not found" }, 404, corsHeaders);
     } catch (err) {
       console.error(err);
@@ -235,6 +235,12 @@ async function handleHit(request, env, corsHeaders) {
 
   if (looksLikeMojibake(city) || isProvinceOnlyName(city)) city = "";
   if (!city && region && !looksLikeMojibake(region) && !isProvinceOnlyName(region)) city = region;
+
+  // Snap bad/missing names from coords before store
+  if ((!city || looksLikeMojibake(city)) && Number.isFinite(lat) && Number.isFinite(lng)) {
+    const snapped = snapCityFromCoords(lat, lng);
+    if (snapped) city = snapped;
+  }
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     lat = null;
@@ -389,6 +395,84 @@ async function refineGeo(ip, hintCountry) {
   return null;
 }
 
+function isBadStoredName(s) {
+  if (!s) return true;
+  const t = String(s).trim();
+  if (!t || t === "Unknown") return true;
+  if (looksLikeMojibake(t) || isProvinceOnlyName(t)) return true;
+  const ok = (t.match(/[A-Za-z\u4e00-\u9fff]/g) || []).join("");
+  if (ok.length < 2) return true;
+  if (ok.length / t.length < 0.5) return true;
+  return false;
+}
+
+function snapCityFromCoords(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let best = null;
+  let bestD = 0.45;
+  for (const [name, coords] of Object.entries(CN_CITY_COORDS)) {
+    if (name === "Xian") continue;
+    const d = Math.abs(coords[0] - lat) + Math.abs(coords[1] - lng);
+    if (d < bestD) {
+      bestD = d;
+      best = name;
+    }
+  }
+  return best;
+}
+
+function fixStoredItem(item) {
+  const lat = Number(item.lat);
+  const lng = Number(item.lng);
+  let city = (item.city || "").toString().trim();
+  let region = (item.region || "").toString().trim();
+
+  const normalized = normalizeCnCity(city);
+  if (normalized && CN_CITY_COORDS[normalized]) {
+    city = normalized;
+  }
+
+  if (isBadStoredName(city)) {
+    const snapped = snapCityFromCoords(lat, lng);
+    if (snapped) city = snapped;
+    else if (!isBadStoredName(region)) city = region;
+    else city = "Unknown";
+  }
+
+  if (CN_CITY_COORDS[city]) {
+    return Object.assign({}, item, {
+      city: city,
+      region: region || "",
+      lat: CN_CITY_COORDS[city][0],
+      lng: CN_CITY_COORDS[city][1],
+      key: (item.countryCode || item.country || "") + "|" + city,
+    });
+  }
+
+  return Object.assign({}, item, {
+    city: city,
+    region: region || "",
+    key: (item.countryCode || item.country || "") + "|" + city,
+  });
+}
+
+async function handleCleanup(env, corsHeaders) {
+  let list = [];
+  try {
+    const raw = await env.VISITORS.get("cities", { type: "json" });
+    if (Array.isArray(raw)) list = raw;
+  } catch {}
+
+  const fixed = list.map(fixStoredItem);
+  await env.VISITORS.put("cities", JSON.stringify(fixed));
+
+  const sample = fixed.slice(0, 20).map(function (x) {
+    return { city: x.city, lat: x.lat, lng: x.lng };
+  });
+
+  return json({ ok: true, total: fixed.length, sample: sample }, 200, corsHeaders);
+}
+
 async function handleCities(env, corsHeaders) {
   let list = [];
   try {
@@ -396,17 +480,34 @@ async function handleCities(env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  const cities = list.map((item) => ({
-    city: item.city,
-    region: item.region || "",
-    country: item.country,
-    countryCode: item.countryCode,
-    lat: item.lat,
-    lng: item.lng,
-    ts: item.ts,
-  }));
+  let changed = false;
+  const fixed = list.map(function (item) {
+    const f = fixStoredItem(item);
+    if (f.city !== item.city || f.lat !== item.lat || f.lng !== item.lng) changed = true;
+    return f;
+  });
 
-  return json({ cities }, 200, corsHeaders);
+  if (changed) {
+    try {
+      await env.VISITORS.put("cities", JSON.stringify(fixed));
+    } catch (e) {
+      console.error("migrate put failed", e);
+    }
+  }
+
+  const cities = fixed.map(function (item) {
+    return {
+      city: item.city,
+      region: item.region || "",
+      country: item.country,
+      countryCode: item.countryCode,
+      lat: item.lat,
+      lng: item.lng,
+      ts: item.ts,
+    };
+  });
+
+  return json({ cities: cities }, 200, corsHeaders);
 }
 
 function json(data, status, extraHeaders) {
