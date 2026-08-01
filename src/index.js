@@ -56,35 +56,48 @@ async function handleHit(request, env, corsHeaders) {
     return json({ error: "Invalid JSON" }, 400, corsHeaders);
   }
 
-  // Only accept city-level info
   const city = (body.city || "").trim().slice(0, 64);
   const country = (body.country || "").trim().slice(0, 64);
   const countryCode = (body.countryCode || "").trim().slice(0, 8).toUpperCase();
 
-  if (!city && !country) {
+  // Optional coordinates (from IP geolocation)
+  let lat = Number(body.lat);
+  let lng = Number(body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    lat = null;
+    lng = null;
+  } else {
+    // basic sanity range
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      lat = null;
+      lng = null;
+    }
+  }
+
+  if (!city && !country && lat === null) {
     return json({ error: "Missing city/country" }, 400, corsHeaders);
   }
 
   const key = `${countryCode || country}|${city || "Unknown"}`;
   const now = Date.now();
 
-  // Load existing list
   let list = [];
   try {
     const raw = await env.VISITORS.get("cities", { type: "json" });
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  // Always record every visit (no deduplication)
+  // Always record every visit
   list.unshift({
     key,
     city: city || "Unknown",
     country: country || "",
     countryCode: countryCode || "",
+    lat,
+    lng,
     ts: now,
   });
 
-  // Keep only latest MAX_CITIES
   if (list.length > MAX_CITIES) {
     list = list.slice(0, MAX_CITIES);
   }
@@ -101,11 +114,12 @@ async function handleCities(env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  // Return simplified data for frontend
   const cities = list.map((item) => ({
     city: item.city,
     country: item.country,
     countryCode: item.countryCode,
+    lat: item.lat,
+    lng: item.lng,
     ts: item.ts,
   }));
 
