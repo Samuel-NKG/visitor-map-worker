@@ -1,6 +1,6 @@
 /**
  * Visitor City Tracker - Cloudflare Worker
- * 
+ *
  * Endpoints:
  *   POST /hit     - Record a visitor city (called by frontend)
  *   GET  /cities  - Get recent visitor cities (for the map)
@@ -10,8 +10,7 @@
  *   - Environment variable (optional): ALLOWED_ORIGIN = https://www.samuelnkg.com
  */
 
-const MAX_CITIES = 80;          // Keep only the latest N cities
-const DEDUP_WINDOW_MS = 30 * 60 * 1000; // Same city within 30 min = ignore
+const MAX_CITIES = 80; // Keep only the latest N cities
 
 export default {
   async fetch(request, env, ctx) {
@@ -21,7 +20,8 @@ export default {
     // CORS
     const allowedOrigin = env.ALLOWED_ORIGIN || "*";
     const corsHeaders = {
-      "Access-Control-Allow-Origin": allowedOrigin === "*" ? "*" : (origin === allowedOrigin ? allowedOrigin : ""),
+      "Access-Control-Allow-Origin":
+        allowedOrigin === "*" ? "*" : origin === allowedOrigin ? allowedOrigin : "",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Max-Age": "86400",
@@ -75,15 +75,7 @@ async function handleHit(request, env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  // Deduplicate: ignore if same city appeared very recently
-  const recent = list.find(
-    (item) => item.key === key && now - item.ts < DEDUP_WINDOW_MS
-  );
-  if (recent) {
-    return json({ ok: true, deduped: true }, 200, corsHeaders);
-  }
-
-  // Add new entry
+  // Always record every visit (no deduplication)
   list.unshift({
     key,
     city: city || "Unknown",
