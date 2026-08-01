@@ -1,291 +1,160 @@
 # Visitor Map Worker
 
-A **serverless visitor origin tracker** built on **Cloudflare Workers + KV**.
+基于 **Cloudflare Workers + KV** 的城市级访客来源统计，配套 **即插即用** 的前端地图模块。
 
-It records **city-level** visit locations (not precise GPS), exposes a tiny JSON API, and pairs cleanly with a Leaflet map on any static site (GitHub Pages, Hexo, Hugo, plain HTML, etc.).
+- 后端：记录城市级访问（非精确 GPS）
+- 前端：一行配置即可渲染 Leaflet 地图
+- 适合 GitHub Pages / Hexo / Hugo / 任意静态站
 
-> Live example: [samuelnkg.com](https://www.samuelnkg.com) → Website Data → Visitor Origins  
-> API demo: `https://map.samuelnkg.com/cities`
-
----
-
-## Features
-
-| Feature | Description |
-|--------|-------------|
-| City-level geo | Uses Cloudflare `request.cf` + optional China IP refinement |
-| No database server | Cloudflare KV only |
-| CORS ready | Call from any frontend |
-| History cleanup | Auto-fix garbled / province-only names; `/cleanup` endpoint |
-| Frequency-friendly | Frontend can size markers by visit count |
-| Free tier friendly | Fits Cloudflare Workers free plan for personal sites |
-
-**Endpoints**
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `POST` | `/hit` | Record one visit (geo from edge / client IP) |
-| `GET` | `/cities` | Recent visits (also migrates bad historical names) |
-| `GET`/`POST` | `/cleanup` | Force rewrite all stored city labels |
-| `OPTIONS` | `*` | CORS preflight |
-
-**Privacy note:** Only city / region / country codes and approximate coordinates derived from IP are stored. No cookies, no user IDs, no exact street-level location.
-
-**Accuracy note:** IP geolocation is approximate. In mainland China, some ISP ranges map to provincial capitals (e.g. Ningbo → Hangzhou). The worker tries to improve this with secondary lookups and a known-city coordinate table, but **city-level accuracy is not guaranteed**.
+> 在线示例：[samuelnkg.com](https://www.samuelnkg.com) · API：`https://map.samuelnkg.com/cities`
 
 ---
 
-## Quick start (Dashboard, ~10 minutes)
+## 模块组成
 
-### 1. Cloudflare account
+| 部分 | 路径 | 说明 |
+|------|------|------|
+| Worker 后端 | [`src/index.js`](./src/index.js) | `/hit` `/cities` `/cleanup` |
+| **前端模块（推荐）** | [`frontend/visitor-map.js`](./frontend/visitor-map.js) | 自动加载 Leaflet + 上报 + 画点 |
+| 演示页 | [`examples/plug-and-play.html`](./examples/plug-and-play.html) | 复制即用 |
 
-Sign up / log in: [https://dash.cloudflare.com](https://dash.cloudflare.com) (free plan is enough).
+---
 
-### 2. Create a KV namespace
+## 最快上手：前端即插即用
 
-1. **Workers & Pages** → **KV**
-2. **Create a namespace**, e.g. `visitor-cities`
-3. Copy the **Namespace ID** (optional if you only bind in the UI)
+### 方式 A：JS 调用（推荐）
 
-### 3. Create the Worker
+```html
+<!-- 1. 放一个容器 -->
+<div id="visitor-map" style="height: 360px;"></div>
 
-1. **Workers & Pages** → **Create** → **Create Worker**
-2. Name it, e.g. `visitor-map-worker` → **Deploy**
-3. Open the worker → **Edit code**
-4. Delete the default code and paste the full contents of [`src/index.js`](./src/index.js)
-5. **Save and Deploy**
+<!-- 2. 引入模块（可用 jsDelivr 或自建路径） -->
+<script src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"></script>
 
-### 4. Bind KV
-
-1. Worker → **Settings** → **Bindings** → **Add** → **KV Namespace**
-2. Variable name: **`VISITORS`** (must match exactly)
-3. Select the namespace from step 2
-4. Save
-
-### 5. (Optional) Restrict CORS
-
-Worker → **Settings** → **Variables** → add:
-
-| Type | Name | Value |
-|------|------|--------|
-| Text | `ALLOWED_ORIGIN` | `https://your-site.com` |
-
-If unset, CORS allows `*`.
-
-### 6. Get your Worker URL
-
-After deploy you get something like:
-
-```text
-https://visitor-map-worker.<your-subdomain>.workers.dev
+<!-- 3. 挂载 -->
+<script>
+  VisitorMap.mount({
+    workerUrl: "https://YOUR_WORKER.workers.dev", // 换成你的 Worker
+    container: "#visitor-map",
+    // markerColor: "#ff6b2c",
+    // report: true,   // 是否 POST /hit，默认 true
+  });
+</script>
 ```
 
-Optional: attach a custom domain under **Triggers** / **Custom Domains** (e.g. `map.example.com`).
+### 方式 B：零逻辑 data 属性
 
-### 7. Smoke test
-
-```bash
-# Record a visit
-curl -X POST "https://YOUR_WORKER_URL/hit" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# List cities
-curl "https://YOUR_WORKER_URL/cities"
-
-# Optional: clean historical labels
-curl "https://YOUR_WORKER_URL/cleanup"
+```html
+<div
+  data-visitor-map
+  data-worker-url="https://YOUR_WORKER.workers.dev"
+  style="height: 360px"
+></div>
+<script
+  src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"
+  defer
+></script>
 ```
 
-You should see JSON like `{ "ok": true, "city": "..." }` and `{ "cities": [ ... ] }`.
+模块会自动：
+
+1. 注入 Leaflet CSS/JS（若页面还没有）
+2. `POST /hit` 记录本次访问
+3. `GET /cities` 拉取列表
+4. **先按坐标、再按名字**聚合，圆点大小表示次数
+5. 乱码城市名按坐标吸附到已知城市
+
+### `VisitorMap.mount` 选项
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `workerUrl` | string | 必填 | Worker 根地址，不要末尾 `/` |
+| `container` | string \| Element | 必填 | 选择器或 DOM 节点 |
+| `report` | boolean | `true` | 是否上报 `/hit` |
+| `loadLeaflet` | boolean | `true` | 是否自动加载 Leaflet |
+| `markerColor` | string | `#ff6b2c` | 圆点颜色 |
+| `height` | number \| string | `360px` | 容器高度 |
+| `tileUrl` | string | CARTO dark | 自定义底图 |
+| `onLoad` | function | — | `(cities) => {}` |
+| `onError` | function | — | `(err) => {}` |
+
+返回值：`Promise<{ map, layer, reload, destroy }>`
 
 ---
 
-## Deploy with Wrangler (CLI)
+## 后端部署（只需一次）
+
+### 仪表盘方式（约 10 分钟）
+
+1. 注册 [Cloudflare](https://dash.cloudflare.com)（免费即可）
+2. **Workers & Pages → KV → Create**，例如 `visitor-cities`
+3. **Create Worker**，名称随意 → Deploy
+4. **Edit code**，粘贴 [`src/index.js`](./src/index.js) 全文 → Save and Deploy
+5. **Settings → Bindings → KV**：
+   - Variable name：**`VISITORS`**（必须一致）
+   - 选择刚建的 KV
+6. 复制 Worker 地址，例如：
+   `https://visitor-map-worker.<subdomain>.workers.dev`
+
+### 命令行
 
 ```bash
 git clone https://github.com/Samuel-NKG/visitor-map-worker.git
 cd visitor-map-worker
 npm install
-
-# Login once
 npx wrangler login
-
-# Create KV and put the id into wrangler.toml
 npx wrangler kv namespace create visitor-cities
-# Edit wrangler.toml → replace YOUR_KV_NAMESPACE_ID
-
+# 把 id 填进 wrangler.toml
 npx wrangler deploy
 ```
 
-`wrangler.toml`:
+### 自测
 
-```toml
-name = "visitor-map-worker"
-main = "src/index.js"
-compatibility_date = "2024-09-01"
-
-[[kv_namespaces]]
-binding = "VISITORS"
-id = "YOUR_KV_NAMESPACE_ID"
-
-# [vars]
-# ALLOWED_ORIGIN = "https://www.example.com"
+```bash
+curl -X POST "https://你的地址/hit" -H "Content-Type: application/json" -d '{}'
+curl "https://你的地址/cities"
 ```
 
 ---
 
-## Frontend integration
+## API 一览
 
-### Minimal: report + list
+| 方法 | 路径 | 作用 |
+|------|------|------|
+| `POST` | `/hit` | 记录一次访问 |
+| `GET` | `/cities` | 最近访客列表（并自动修正坏标签） |
+| `GET/POST` | `/cleanup` | 强制清洗历史 log |
 
-```html
-<script>
-  const WORKER_URL = "https://YOUR_WORKER_URL"; // no trailing slash
-
-  // 1) record this visit
-  fetch(WORKER_URL + "/hit", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  }).catch(() => {});
-
-  // 2) load cities for your UI / map
-  fetch(WORKER_URL + "/cities")
-    .then((r) => r.json())
-    .then((data) => {
-      console.log(data.cities);
-      // each item: { city, region, country, countryCode, lat, lng, ts }
-    })
-    .catch(() => {});
-</script>
-```
-
-### Leaflet map (recommended)
-
-See a complete copy-paste example:
-
-- [`examples/minimal.html`](./examples/minimal.html) — standalone dark map page
-- [`examples/frontend-snippet.js`](./examples/frontend-snippet.js) — drop into an existing site
-
-Typical flow:
-
-1. Load Leaflet CSS/JS (CDN)
-2. `POST /hit` once per page load
-3. `GET /cities`
-4. Group by **coordinates first**, then pick the best city name (avoids China duplicate place-names and garbled labels)
-5. Draw `L.circleMarker` with radius ∝ √count
+可选环境变量 `ALLOWED_ORIGIN`：限制 CORS 为你的站点。
 
 ---
 
-## API reference
-
-### `POST /hit`
-
-Body optional JSON:
-
-```json
-{ "city": "Nanjing", "countryCode": "CN", "lat": 32.06, "lng": 118.8 }
-```
-
-Usually send `{}` and let the Worker resolve geo from the request IP / Cloudflare edge.
-
-**Response**
-
-```json
-{ "ok": true, "city": "Nanjing", "region": "Jiangsu", "countryCode": "CN" }
-```
-
-### `GET /cities`
-
-```json
-{
-  "cities": [
-    {
-      "city": "Nanjing",
-      "region": "Jiangsu",
-      "country": "China",
-      "countryCode": "CN",
-      "lat": 32.0603,
-      "lng": 118.7969,
-      "ts": 1785600000000
-    }
-  ]
-}
-```
-
-- Newest first
-- Cap: last **120** visits (configurable via `MAX_CITIES` in `src/index.js`)
-- On read, bad labels may be rewritten into KV automatically
-
-### `GET` or `POST` `/cleanup`
-
-Rewrites all stored entries (garbled → nearest known city by coordinates).
-
-```json
-{ "ok": true, "total": 42, "sample": [ { "city": "Ningbo", "lat": 29.87, "lng": 121.54 } ] }
-```
-
----
-
-## Project layout
+## 项目结构
 
 ```text
 visitor-map-worker/
-├── src/index.js          # Worker source (single file)
-├── wrangler.toml         # Wrangler config + KV binding
-├── package.json
+├── src/index.js                 # Worker
+├── frontend/visitor-map.js      # 即插即用前端模块
 ├── examples/
-│   ├── minimal.html      # Full demo page
+│   ├── plug-and-play.html       # 推荐演示
+│   ├── minimal.html
 │   └── frontend-snippet.js
-├── LICENSE               # MIT
+├── wrangler.toml
+├── package.json
+├── LICENSE                      # MIT
 └── README.md
 ```
 
 ---
 
-## Custom domain (optional)
+## 隐私与精度
 
-1. Add your domain to Cloudflare DNS
-2. Worker → **Triggers** → **Custom Domains** → Add `map.yourdomain.com`
-3. Point frontend `WORKER_URL` to that host
-
-Useful if `workers.dev` is slow or blocked on some networks.
-
----
-
-## Limits & costs
-
-- Designed for the **Cloudflare free tier** (personal / small sites)
-- Secondary geo APIs (`pconline`, `ip-api.com`) have their own rate limits
-- Do not use this as a high-security analytics product; it is a **lightweight origin map**
-
----
-
-## Roadmap ideas
-
-- [ ] Optional per-day aggregation mode
-- [ ] Admin token for `/cleanup`
-- [ ] Embeddable Web Component for the map
-
-PRs welcome.
+- 只存城市 / 地区 / 国家与 IP 推导的大致坐标，无 Cookie、无用户 ID
+- IP 定位在中国大陆常有误差（如地市被标成省会），模块会尽量纠正乱码与近距离重名
+- 面向个人站点；非企业级分析产品
 
 ---
 
 ## License
 
 [MIT](./LICENSE)
-
----
-
-## 中文简要说明
-
-这是一个基于 **Cloudflare Workers + KV** 的访客来源（城市级）统计后端：
-
-1. 在 Cloudflare 创建 KV，绑定名为 **`VISITORS`**
-2. 把 [`src/index.js`](./src/index.js) 部署为 Worker
-3. 前端 `POST /hit` 记一次访问，`GET /cities` 取列表
-4. 用 Leaflet 画点；圆点大小可表示次数
-5. 乱码历史可用 `/cleanup` 或打开 `/cities` 自动纠正
-
-适合个人主页 / 静态博客，不需要自己的服务器。

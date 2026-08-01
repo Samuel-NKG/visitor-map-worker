@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VisitorMap 即插即用示例</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #0b0b0e;
+        color: #eee;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        opacity: 0.7;
+        line-height: 1.5;
+      }
+      code {
+        background: rgba(255, 255, 255, 0.08);
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      #my-map {
+        height: 420px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-top: 1rem;
+      }
+      pre {
+        background: #141418;
+        padding: 1rem;
+        border-radius: 10px;
+        overflow: auto;
+        font-size: 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>VisitorMap 即插即用</h1>
+      <p>
+        把下面的 <code>YOUR_WORKER_URL</code> 换成你的 Worker 地址即可。
+        模块会自动加载 Leaflet、上报访问并渲染地图。
+      </p>
+
+      <div id="my-map"></div>
+
+      <h1 style="margin-top: 2rem">也可以用 data 属性零 JS 初始化</h1>
+      <pre>&lt;div
+  data-visitor-map
+  data-worker-url="https://YOUR_WORKER.workers.dev"
+  style="height:360px"
+&gt;&lt;/div&gt;
+&lt;script src="../frontend/visitor-map.js" defer&gt;&lt;/script&gt;</pre>
+    </main>
+
+    <!-- 本地开发用相对路径；线上可用 jsDelivr -->
+    <script src="../frontend/visitor-map.js"></script>
+    <script>
+      // ============ 改这里 ============
+      var WORKER_URL = "https://YOUR_WORKER_URL";
+      // ================================
+
+      VisitorMap.mount({
+        workerUrl: WORKER_URL,
+        container: "#my-map",
+        markerColor: "#ff6b2c",
+        report: true,
+        onLoad: function (cities) {
+          console.log("loaded", cities.length, "records");
+        },
+        onError: function (err) {
+          console.error(err);
+          alert("加载失败：请检查 WORKER_URL 与 CORS");
+        },
+      });
+    </script>
+  </body>
+</html>
