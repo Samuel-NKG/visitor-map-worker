@@ -1,54 +1,70 @@
 # Visitor Map Worker
 
-基于 **Cloudflare Workers + KV** 的城市级访客来源统计，配套 **即插即用** 的前端地图模块。
+**城市级访客来源统计 + 自带可交互地图渲染。**
 
-- 后端：记录城市级访问（非精确 GPS）
-- 前端：一行配置即可渲染 Leaflet 地图
-- 适合 GitHub Pages / Hexo / Hugo / 任意静态站
+基于 Cloudflare Workers + KV。别人克隆/引用本项目后，**不需要自己再找地图库、写聚合逻辑**——前端模块会自动加载 Leaflet、上报访问并画出圆点地图。
 
 > 在线示例：[samuelnkg.com](https://www.samuelnkg.com) · API：`https://map.samuelnkg.com/cities`
 
 ---
 
-## 模块组成
+## 你得到什么
 
-| 部分 | 路径 | 说明 |
-|------|------|------|
-| Worker 后端 | [`src/index.js`](./src/index.js) | `/hit` `/cities` `/cleanup` |
-| **前端模块（推荐）** | [`frontend/visitor-map.js`](./frontend/visitor-map.js) | 自动加载 Leaflet + 上报 + 画点 |
-| 演示页 | [`examples/plug-and-play.html`](./examples/plug-and-play.html) | 复制即用 |
+| 能力 | 是否自带 | 说明 |
+|------|----------|------|
+| 访客城市记录 API | ✅ | `POST /hit`、`GET /cities` |
+| **地图渲染** | ✅ | [`frontend/visitor-map.js`](./frontend/visitor-map.js) |
+| Leaflet 加载 | ✅ | 模块自动注入 CDN，无需手写 |
+| 圆点大小 ∝ 访问次数 | ✅ | 内置 |
+| 坐标优先聚合 / 乱码修正 | ✅ | 内置 |
+
+**不需要**再去：
+
+- 自己选地图 SDK
+- 自己写 `L.map` / `circleMarker`
+- 自己处理中国重名城市、乱码标签
 
 ---
 
-## 最快上手：前端即插即用
+## 5 分钟出图（推荐路径）
 
-### 方式 A：JS 调用（推荐）
+### ① 部署后端（一次）
+
+1. [Cloudflare](https://dash.cloudflare.com) 免费账号  
+2. 创建 KV 命名空间（如 `visitor-cities`）  
+3. 创建 Worker，粘贴 [`src/index.js`](./src/index.js) → Deploy  
+4. Bindings 里绑定 KV，变量名必须是 **`VISITORS`**  
+5. 复制 Worker 地址，例如 `https://xxx.workers.dev`
+
+### ② 任意网页插入地图（复制即用）
 
 ```html
-<!-- 1. 放一个容器 -->
-<div id="visitor-map" style="height: 360px;"></div>
+<!-- 地图容器 -->
+<div id="visitor-map" style="height: 360px; width: 100%;"></div>
 
-<!-- 2. 引入模块（可用 jsDelivr 或自建路径） -->
+<!-- 本项目自带的前端模块：自动加载地图并渲染 -->
 <script src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"></script>
-
-<!-- 3. 挂载 -->
 <script>
   VisitorMap.mount({
-    workerUrl: "https://YOUR_WORKER.workers.dev", // 换成你的 Worker
+    workerUrl: "https://你的Worker地址",  // 不要末尾斜杠
     container: "#visitor-map",
-    // markerColor: "#ff6b2c",
-    // report: true,   // 是否 POST /hit，默认 true
   });
 </script>
 ```
 
-### 方式 B：零逻辑 data 属性
+完成。打开页面即会：
+
+1. 自动加载 Leaflet 底图  
+2. 向 Worker 上报本次访问  
+3. 拉取城市列表并渲染圆点  
+
+### ③ 更懒：只用 HTML 属性
 
 ```html
 <div
   data-visitor-map
-  data-worker-url="https://YOUR_WORKER.workers.dev"
-  style="height: 360px"
+  data-worker-url="https://你的Worker地址"
+  style="height: 360px; width: 100%"
 ></div>
 <script
   src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"
@@ -56,92 +72,81 @@
 ></script>
 ```
 
-模块会自动：
-
-1. 注入 Leaflet CSS/JS（若页面还没有）
-2. `POST /hit` 记录本次访问
-3. `GET /cities` 拉取列表
-4. **先按坐标、再按名字**聚合，圆点大小表示次数
-5. 乱码城市名按坐标吸附到已知城市
-
-### `VisitorMap.mount` 选项
-
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `workerUrl` | string | 必填 | Worker 根地址，不要末尾 `/` |
-| `container` | string \| Element | 必填 | 选择器或 DOM 节点 |
-| `report` | boolean | `true` | 是否上报 `/hit` |
-| `loadLeaflet` | boolean | `true` | 是否自动加载 Leaflet |
-| `markerColor` | string | `#ff6b2c` | 圆点颜色 |
-| `height` | number \| string | `360px` | 容器高度 |
-| `tileUrl` | string | CARTO dark | 自定义底图 |
-| `onLoad` | function | — | `(cities) => {}` |
-| `onError` | function | — | `(err) => {}` |
-
-返回值：`Promise<{ map, layer, reload, destroy }>`
-
 ---
 
-## 后端部署（只需一次）
-
-### 仪表盘方式（约 10 分钟）
-
-1. 注册 [Cloudflare](https://dash.cloudflare.com)（免费即可）
-2. **Workers & Pages → KV → Create**，例如 `visitor-cities`
-3. **Create Worker**，名称随意 → Deploy
-4. **Edit code**，粘贴 [`src/index.js`](./src/index.js) 全文 → Save and Deploy
-5. **Settings → Bindings → KV**：
-   - Variable name：**`VISITORS`**（必须一致）
-   - 选择刚建的 KV
-6. 复制 Worker 地址，例如：
-   `https://visitor-map-worker.<subdomain>.workers.dev`
-
-### 命令行
+## 本地完整演示
 
 ```bash
 git clone https://github.com/Samuel-NKG/visitor-map-worker.git
 cd visitor-map-worker
-npm install
-npx wrangler login
-npx wrangler kv namespace create visitor-cities
-# 把 id 填进 wrangler.toml
-npx wrangler deploy
+# 编辑 examples/plug-and-play.html 里的 WORKER_URL
+# 用浏览器打开该文件，或任意静态服务器托管
 ```
 
-### 自测
+- [`examples/plug-and-play.html`](./examples/plug-and-play.html) — **官方推荐**，展示模块出图  
+- [`examples/minimal.html`](./examples/minimal.html) — 内联版参考  
 
-```bash
-curl -X POST "https://你的地址/hit" -H "Content-Type: application/json" -d '{}'
-curl "https://你的地址/cities"
-```
+中文步骤长文见：[USAGE.zh-CN.md](./USAGE.zh-CN.md)
 
 ---
 
-## API 一览
+## 前端模块 API
+
+```js
+VisitorMap.mount({
+  workerUrl: "https://xxx.workers.dev", // 必填
+  container: "#visitor-map",            // 必填：选择器或 DOM
+  report: true,                         // 是否 POST /hit
+  loadLeaflet: true,                    // 是否自动加载 Leaflet
+  markerColor: "#ff6b2c",
+  height: 360,
+  onLoad: (cities) => {},
+  onError: (err) => {},
+});
+// => Promise<{ map, layer, reload, destroy }>
+```
+
+文件位置：[`frontend/visitor-map.js`](./frontend/visitor-map.js)  
+也可下载到自己站点目录后改为相对路径引用，不依赖 jsDelivr。
+
+---
+
+## 后端 API
 
 | 方法 | 路径 | 作用 |
 |------|------|------|
 | `POST` | `/hit` | 记录一次访问 |
-| `GET` | `/cities` | 最近访客列表（并自动修正坏标签） |
-| `GET/POST` | `/cleanup` | 强制清洗历史 log |
+| `GET` | `/cities` | 访客列表（读取时会尝试修正坏标签） |
+| `GET/POST` | `/cleanup` | 强制清洗历史记录 |
 
-可选环境变量 `ALLOWED_ORIGIN`：限制 CORS 为你的站点。
+可选变量 `ALLOWED_ORIGIN`：限制跨域来源。
+
+### Wrangler 部署
+
+```bash
+npm install
+npx wrangler login
+npx wrangler kv namespace create visitor-cities
+# 填 wrangler.toml 中的 id
+npx wrangler deploy
+```
 
 ---
 
-## 项目结构
+## 目录结构
 
 ```text
 visitor-map-worker/
-├── src/index.js                 # Worker
-├── frontend/visitor-map.js      # 即插即用前端模块
+├── src/index.js                 # 后端 Worker
+├── frontend/visitor-map.js      # ★ 自带地图渲染模块（即插即用）
 ├── examples/
-│   ├── plug-and-play.html       # 推荐演示
+│   ├── plug-and-play.html       # ★ 复制即用的完整出图示例
 │   ├── minimal.html
 │   └── frontend-snippet.js
+├── USAGE.zh-CN.md               # 中文使用说明
 ├── wrangler.toml
 ├── package.json
-├── LICENSE                      # MIT
+├── LICENSE
 └── README.md
 ```
 
@@ -149,9 +154,9 @@ visitor-map-worker/
 
 ## 隐私与精度
 
-- 只存城市 / 地区 / 国家与 IP 推导的大致坐标，无 Cookie、无用户 ID
-- IP 定位在中国大陆常有误差（如地市被标成省会），模块会尽量纠正乱码与近距离重名
-- 面向个人站点；非企业级分析产品
+- 仅城市 / 地区 / 国家与 IP 推导坐标；无 Cookie、无用户 ID  
+- IP 定位有误差（国内地市常被标成省会）；模块会尽量处理乱码与近距离合并  
+- 面向个人站点流量  
 
 ---
 

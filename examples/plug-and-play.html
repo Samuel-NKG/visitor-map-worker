@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VisitorMap 即插即用示例</title>
+    <title>VisitorMap — 自带地图渲染示例</title>
     <style>
       body {
         margin: 0;
@@ -21,14 +21,23 @@
         margin: 0 0 0.5rem;
       }
       p {
-        opacity: 0.7;
-        line-height: 1.5;
+        opacity: 0.75;
+        line-height: 1.55;
+        margin: 0.4rem 0;
       }
       code {
         background: rgba(255, 255, 255, 0.08);
         padding: 0.15rem 0.4rem;
         border-radius: 4px;
         font-size: 0.9em;
+      }
+      .note {
+        margin: 1rem 0;
+        padding: 0.85rem 1rem;
+        border-radius: 10px;
+        background: rgba(255, 107, 44, 0.12);
+        border: 1px solid rgba(255, 107, 44, 0.35);
+        font-size: 0.92rem;
       }
       #my-map {
         height: 420px;
@@ -42,36 +51,53 @@
         padding: 1rem;
         border-radius: 10px;
         overflow: auto;
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         border: 1px solid rgba(255, 255, 255, 0.08);
+        line-height: 1.45;
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>VisitorMap 即插即用</h1>
+      <h1>VisitorMap：项目自带地图，无需再找地图库</h1>
       <p>
-        把下面的 <code>YOUR_WORKER_URL</code> 换成你的 Worker 地址即可。
-        模块会自动加载 Leaflet、上报访问并渲染地图。
+        本页只做一件事：引入仓库内的
+        <code>frontend/visitor-map.js</code>。
+        模块会自动加载 Leaflet、上报访问并渲染圆点。
       </p>
+      <div class="note">
+        请把下方脚本里的 <code>WORKER_URL</code> 换成你部署好的 Worker 地址，然后用浏览器打开本文件。
+      </div>
 
       <div id="my-map"></div>
 
-      <h1 style="margin-top: 2rem">也可以用 data 属性零 JS 初始化</h1>
+      <h1 style="margin-top: 2rem">复制到你网站的最小代码</h1>
+      <pre>&lt;div id="visitor-map" style="height:360px;width:100%"&gt;&lt;/div&gt;
+&lt;script src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  VisitorMap.mount({
+    workerUrl: "https://你的Worker地址",
+    container: "#visitor-map",
+  });
+&lt;/script&gt;</pre>
+
+      <h1 style="margin-top: 1.5rem">或使用 data 属性（几乎零 JS）</h1>
       <pre>&lt;div
   data-visitor-map
-  data-worker-url="https://YOUR_WORKER.workers.dev"
-  style="height:360px"
+  data-worker-url="https://你的Worker地址"
+  style="height:360px;width:100%"
 &gt;&lt;/div&gt;
-&lt;script src="../frontend/visitor-map.js" defer&gt;&lt;/script&gt;</pre>
+&lt;script
+  src="https://cdn.jsdelivr.net/gh/Samuel-NKG/visitor-map-worker@main/frontend/visitor-map.js"
+  defer
+&gt;&lt;/script&gt;</pre>
     </main>
 
-    <!-- 本地开发用相对路径；线上可用 jsDelivr -->
     <script src="../frontend/visitor-map.js"></script>
     <script>
-      // ============ 改这里 ============
+      // ============ 改成你的 Worker 地址 ============
       var WORKER_URL = "https://YOUR_WORKER_URL";
-      // ================================
+      // =============================================
 
       VisitorMap.mount({
         workerUrl: WORKER_URL,
@@ -79,11 +105,11 @@
         markerColor: "#ff6b2c",
         report: true,
         onLoad: function (cities) {
-          console.log("loaded", cities.length, "records");
+          console.log("[VisitorMap] loaded", cities.length, "records");
         },
         onError: function (err) {
           console.error(err);
-          alert("加载失败：请检查 WORKER_URL 与 CORS");
+          alert("加载失败：请检查 WORKER_URL 是否已替换，以及 Worker 是否部署并绑定了 VISITORS");
         },
       });
     </script>
