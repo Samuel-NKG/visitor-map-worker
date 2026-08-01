@@ -1,0 +1,13 @@
+name = "visitor-map-worker"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+# After creating the KV namespace in Cloudflare dashboard,
+# replace the id below with your real KV namespace id.
+[[kv_namespaces]]
+binding = "VISITORS"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Optional: restrict CORS to your site only
+# [vars]
+# ALLOWED_ORIGIN = "https://www.samuelnkg.com"
