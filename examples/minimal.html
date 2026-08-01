@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visitor Map — Demo</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0c;
+        color: #fff;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 600;
+      }
+      p {
+        margin: 0.35rem 0 0;
+        opacity: 0.65;
+        font-size: 0.85rem;
+      }
+      #map {
+        height: calc(100% - 72px);
+        width: 100%;
+        background: #0a0a0c;
+      }
+      code {
+        background: rgba(255, 255, 255, 0.08);
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Visitor Origins</h1>
+      <p>
+        Edit <code>WORKER_URL</code> in this file, then open it locally or host
+        on any static server.
+      </p>
+    </header>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // ============ CONFIG ============
+      var WORKER_URL = "https://YOUR_WORKER_URL"; // no trailing slash
+      // ================================
+
+      var map = L.map("map", { worldCopyJump: true }).setView([20, 10], 2);
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution: "&copy; OpenStreetMap &copy; CARTO",
+          subdomains: "abcd",
+          maxZoom: 18,
+        }
+      ).addTo(map);
+      var layer = L.layerGroup().addTo(map);
+
+      function render(cities) {
+        layer.clearLayers();
+        var groups = {};
+        (cities || []).forEach(function (c) {
+          var lat = Number(c.lat),
+            lng = Number(c.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+          var key =
+            Math.round(lat * 5) / 5 + "," + Math.round(lng * 5) / 5;
+          var city = (c.city || "Unknown").toString();
+          if (!groups[key]) {
+            groups[key] = {
+              city: city,
+              country: c.country || c.countryCode || "",
+              sumLat: lat,
+              sumLng: lng,
+              count: 1,
+            };
+          } else {
+            groups[key].count += 1;
+            groups[key].sumLat += lat;
+            groups[key].sumLng += lng;
+          }
+        });
+        var bounds = [];
+        Object.keys(groups).forEach(function (k) {
+          var g = groups[k];
+          var lat = g.sumLat / g.count,
+            lng = g.sumLng / g.count;
+          var r = Math.min(18, 5 + Math.sqrt(g.count) * 3.2);
+          layer.addLayer(
+            L.circleMarker([lat, lng], {
+              radius: r,
+              color: "#ff6b2c",
+              weight: 1.5,
+              fillColor: "#ff6b2c",
+              fillOpacity: 0.75,
+            }).bindPopup(
+              g.city +
+                (g.country ? ", " + g.country : "") +
+                " · " +
+                g.count +
+                (g.count > 1 ? " visits" : " visit")
+            )
+          );
+          bounds.push([lat, lng]);
+        });
+        if (bounds.length) {
+          try {
+            map.fitBounds(bounds, { padding: [30, 30], maxZoom: 5 });
+          } catch (e) {}
+        }
+      }
+
+      fetch(WORKER_URL + "/hit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      })
+        .catch(function () {})
+        .finally(function () {
+          fetch(WORKER_URL + "/cities")
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (data) {
+              render(data.cities || []);
+            })
+            .catch(function (err) {
+              console.error(err);
+              alert("Failed to load /cities. Check WORKER_URL and CORS.");
+            });
+        });
+    </script>
+  </body>
+</html>

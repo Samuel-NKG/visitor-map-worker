@@ -1,0 +1,15 @@
+{
+  "name": "visitor-map-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "City-level visitor origin tracker on Cloudflare Workers + KV",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  }
+}
