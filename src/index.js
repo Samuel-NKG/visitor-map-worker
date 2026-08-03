@@ -236,7 +236,6 @@ async function handleHit(request, env, corsHeaders) {
   if (looksLikeMojibake(city) || isProvinceOnlyName(city)) city = "";
   if (!city && region && !looksLikeMojibake(region) && !isProvinceOnlyName(region)) city = region;
 
-  // Snap bad/missing names from coords before store
   if ((!city || looksLikeMojibake(city)) && Number.isFinite(lat) && Number.isFinite(lng)) {
     const snapped = snapCityFromCoords(lat, lng);
     if (snapped) city = snapped;
@@ -255,6 +254,7 @@ async function handleHit(request, env, corsHeaders) {
     city || (!looksLikeMojibake(region) && !isProvinceOnlyName(region) ? region : "") || "Unknown";
   const key = (countryCode || country) + "|" + displayCity;
   const now = Date.now();
+  const times = formatVisitTimes(now);
 
   let list = [];
   try {
@@ -271,12 +271,26 @@ async function handleHit(request, env, corsHeaders) {
     lat,
     lng,
     ts: now,
+    timeGMT: times.timeGMT,
+    timeBeijing: times.timeBeijing,
   });
 
   if (list.length > MAX_CITIES) list = list.slice(0, MAX_CITIES);
   await env.VISITORS.put("cities", JSON.stringify(list));
 
-  return json({ ok: true, city: displayCity, region: region || "", countryCode }, 200, corsHeaders);
+  return json(
+    {
+      ok: true,
+      city: displayCity,
+      region: region || "",
+      countryCode,
+      ts: now,
+      timeGMT: times.timeGMT,
+      timeBeijing: times.timeBeijing,
+    },
+    200,
+    corsHeaders
+  );
 }
 
 function normalizeCnCity(name) {
@@ -395,6 +409,48 @@ async function refineGeo(ip, hintCountry) {
   return null;
 }
 
+/** Format unix ms -> GMT (UTC) and Beijing (UTC+8) wall-clock strings */
+function formatVisitTimes(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) {
+    return { timeGMT: null, timeBeijing: null };
+  }
+  const pad = (x) => String(x).padStart(2, "0");
+  const d = new Date(n);
+
+  const timeGMT =
+    d.getUTCFullYear() +
+    "-" +
+    pad(d.getUTCMonth() + 1) +
+    "-" +
+    pad(d.getUTCDate()) +
+    " " +
+    pad(d.getUTCHours()) +
+    ":" +
+    pad(d.getUTCMinutes()) +
+    ":" +
+    pad(d.getUTCSeconds()) +
+    " GMT";
+
+  // Beijing = UTC+8 (no DST)
+  const b = new Date(n + 8 * 60 * 60 * 1000);
+  const timeBeijing =
+    b.getUTCFullYear() +
+    "-" +
+    pad(b.getUTCMonth() + 1) +
+    "-" +
+    pad(b.getUTCDate()) +
+    " " +
+    pad(b.getUTCHours()) +
+    ":" +
+    pad(b.getUTCMinutes()) +
+    ":" +
+    pad(b.getUTCSeconds()) +
+    " CST";
+
+  return { timeGMT, timeBeijing };
+}
+
 function isBadStoredName(s) {
   if (!s) return true;
   const t = String(s).trim();
@@ -496,6 +552,7 @@ async function handleCities(env, corsHeaders) {
   }
 
   const cities = fixed.map(function (item) {
+    const times = formatVisitTimes(item.ts);
     return {
       city: item.city,
       region: item.region || "",
@@ -504,6 +561,8 @@ async function handleCities(env, corsHeaders) {
       lat: item.lat,
       lng: item.lng,
       ts: item.ts,
+      timeGMT: item.timeGMT || times.timeGMT,
+      timeBeijing: item.timeBeijing || times.timeBeijing,
     };
   });
 
