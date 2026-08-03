@@ -1,316 +1,127 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Visitor Map · Dashboard</title>
-  <style>
-    :root {
-      --bg: #0b0b0e;
-      --panel: #141418;
-      --border: rgba(255,255,255,.08);
-      --text: #ececef;
-      --muted: rgba(255,255,255,.55);
-      --accent: #ff6b2c;
-      --row: rgba(255,255,255,.03);
-      --row-hover: rgba(255,107,44,.08);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-    }
-    header {
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      align-items: center;
-      justify-content: space-between;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 1.15rem;
-      font-weight: 600;
-      letter-spacing: .02em;
-    }
-    header p {
-      margin: .25rem 0 0;
-      color: var(--muted);
-      font-size: .85rem;
-    }
-    .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
-    button, a.btn {
-      appearance: none;
-      border: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--text);
-      padding: .45rem .85rem;
-      border-radius: 8px;
-      font-size: .85rem;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: .35rem;
-    }
-    button:hover, a.btn:hover { border-color: rgba(255,107,44,.45); }
-    button.primary {
-      background: rgba(255,107,44,.15);
-      border-color: rgba(255,107,44,.4);
-      color: #ffb08a;
-    }
-    main { padding: 1.25rem 1.5rem 2.5rem; max-width: 1200px; margin: 0 auto; }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: .75rem;
-      margin-bottom: 1.25rem;
-    }
-    .stat {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: .9rem 1rem;
-    }
-    .stat .label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
-    .stat .value { font-size: 1.4rem; font-weight: 600; margin-top: .25rem; color: var(--accent); }
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .75rem;
-      margin-bottom: 1rem;
-      align-items: center;
-    }
-    input[type="search"] {
-      flex: 1;
-      min-width: 200px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: .55rem .85rem;
-      font-size: .9rem;
-      outline: none;
-    }
-    input[type="search"]:focus { border-color: rgba(255,107,44,.5); }
-    .meta { color: var(--muted); font-size: .8rem; }
-    .table-wrap {
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--panel);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: .875rem;
-    }
-    th, td {
-      padding: .7rem .85rem;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    th {
-      position: sticky;
-      top: 0;
-      background: #1a1a20;
-      color: var(--muted);
-      font-weight: 500;
-      font-size: .75rem;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      z-index: 1;
-    }
-    tbody tr:nth-child(even) { background: var(--row); }
-    tbody tr:hover { background: var(--row-hover); }
-    .city { font-weight: 600; }
-    .muted { color: var(--muted); }
-    .badge {
-      display: inline-block;
-      padding: .15rem .45rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      font-size: .75rem;
-      color: var(--muted);
-    }
-    .empty, .error {
-      padding: 2.5rem 1rem;
-      text-align: center;
-      color: var(--muted);
-    }
-    .error { color: #ff8a80; }
-    footer {
-      margin-top: 1.5rem;
-      color: var(--muted);
-      font-size: .8rem;
-      line-height: 1.5;
-    }
-    code { background: rgba(255,255,255,.06); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Visitor Map · 访客明细</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#0b0b0e;color:#eee}
+header,main{max-width:1400px;margin:0 auto;padding:1rem 1.25rem}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.75rem;border-bottom:1px solid #222}
+h1{margin:0;font-size:1.1rem}p{margin:.3rem 0 0;color:#999;font-size:.85rem}
+button,.btn{background:#141418;border:1px solid #333;color:#eee;padding:.4rem .8rem;border-radius:8px;cursor:pointer;text-decoration:none;font-size:.85rem}
+button.primary{border-color:#ff6b2c;color:#ffb08a}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.6rem;margin:1rem 0}
+.stat{background:#141418;border:1px solid #222;border-radius:10px;padding:.75rem}
+.stat b{display:block;color:#ff6b2c;font-size:1.2rem;margin-top:.2rem}
+.stat span{color:#888;font-size:.72rem}
+input{width:100%;max-width:420px;background:#141418;border:1px solid #333;border-radius:8px;color:#fff;padding:.5rem .75rem;margin:.5rem 0 1rem}
+.wrap{overflow:auto;border:1px solid #222;border-radius:10px;max-height:70vh}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th,td{padding:.5rem .65rem;border-bottom:1px solid #1c1c1c;text-align:left;white-space:nowrap;vertical-align:top}
+th{background:#1a1a20;color:#888;position:sticky;top:0;z-index:1}
+tr:nth-child(even){background:#121214}
+.mu{color:#888}.city{font-weight:600}
+.badge{border:1px solid #333;border-radius:999px;padding:.1rem .4rem;font-size:.72rem;color:#aaa}
+.ua,.ref{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;color:#aaa}
+footer{margin-top:1rem;color:#777;font-size:.8rem}
+.err{color:#ff8a80;text-align:center;padding:2rem}
+</style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>Visitor Map · 访客明细</h1>
-      <p>基于 IP 地理库的城市级访问记录 · 不存储精确 GPS</p>
-    </div>
-    <div class="actions">
-      <button type="button" class="primary" id="btn-refresh">刷新</button>
-      <a class="btn" id="link-json" href="/cities" target="_blank" rel="noopener">JSON API</a>
-    </div>
-  </header>
-  <main>
-    <div class="stats" id="stats">
-      <div class="stat"><div class="label">总记录</div><div class="value" id="s-total">—</div></div>
-      <div class="stat"><div class="label">城市数</div><div class="value" id="s-cities">—</div></div>
-      <div class="stat"><div class="label">国家/地区</div><div class="value" id="s-countries">—</div></div>
-      <div class="stat"><div class="label">最近访问</div><div class="value" id="s-latest" style="font-size:1rem">—</div></div>
-    </div>
-    <div class="toolbar">
-      <input type="search" id="q" placeholder="搜索城市、地区、国家…" autocomplete="off" />
-      <span class="meta" id="status">加载中…</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>北京时间</th>
-            <th>格林威治时间</th>
-            <th>城市</th>
-            <th>地区</th>
-            <th>国家</th>
-            <th>坐标</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
-          <tr><td colspan="7" class="empty">加载中…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <footer>
-      数据来源：Cloudflare / IP 地理库推导的城市级位置，可能存在误差（尤其是手机流量）。
-      本页不展示原始 IP 地址，仅展示 IP 解析后的地理位置。
-      API：<code id="api-hint">/cities</code>
-    </footer>
-  </main>
-  <script>
-    (function () {
-      var API = '/cities';
-      try {
-        var params = new URLSearchParams(location.search);
-        if (params.get('api')) API = params.get('api');
-      } catch (e) {}
-
-      var all = [];
-      var statusEl = document.getElementById('status');
-      var tbody = document.getElementById('tbody');
-      var qEl = document.getElementById('q');
-      var linkJson = document.getElementById('link-json');
-      linkJson.href = API;
-      document.getElementById('api-hint').textContent = API;
-
-      function esc(s) {
-        return String(s == null ? '' : s)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
-      }
-
-      function originLabel(c) {
-        var parts = [];
-        if (c.city) parts.push(c.city);
-        if (c.region && c.region !== c.city) parts.push(c.region);
-        if (c.country || c.countryCode) parts.push(c.country || c.countryCode);
-        return parts.join(' · ') || 'Unknown';
-      }
-
-      function renderStats(list) {
-        document.getElementById('s-total').textContent = String(list.length);
-        var cities = {};
-        var countries = {};
-        list.forEach(function (c) {
-          if (c.city) cities[c.city] = 1;
-          var cc = c.countryCode || c.country;
-          if (cc) countries[cc] = 1;
-        });
-        document.getElementById('s-cities').textContent = String(Object.keys(cities).length);
-        document.getElementById('s-countries').textContent = String(Object.keys(countries).length);
-        var latest = list[0];
-        document.getElementById('s-latest').textContent = latest
-          ? (latest.timeBeijing || latest.timeGMT || '—')
-          : '—';
-      }
-
-      function renderTable(list) {
-        if (!list.length) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无访问记录</td></tr>';
-          return;
-        }
-        var html = '';
-        list.forEach(function (c, i) {
-          var lat = c.lat != null ? Number(c.lat).toFixed(4) : '—';
-          var lng = c.lng != null ? Number(c.lng).toFixed(4) : '—';
-          var countryExtra = (c.country && c.country !== c.countryCode) ? (' ' + esc(c.country)) : '';
-          html +=
-            '<tr>' +
-            '<td class="muted">' + (i + 1) + '</td>' +
-            '<td>' + esc(c.timeBeijing || '—') + '</td>' +
-            '<td class="muted">' + esc(c.timeGMT || '—') + '</td>' +
-            '<td class="city">' + esc(c.city || 'Unknown') + '</td>' +
-            '<td>' + esc(c.region || '—') + '</td>' +
-            '<td><span class="badge">' + esc(c.countryCode || c.country || '—') + '</span>' + countryExtra + '</td>' +
-            '<td class="muted">' + lat + ', ' + lng + '</td>' +
-            '</tr>';
-        });
-        tbody.innerHTML = html;
-      }
-
-      function applyFilter() {
-        var q = (qEl.value || '').trim().toLowerCase();
-        var list = all;
-        if (q) {
-          list = all.filter(function (c) {
-            return originLabel(c).toLowerCase().indexOf(q) >= 0 ||
-              String(c.timeBeijing || '').toLowerCase().indexOf(q) >= 0 ||
-              String(c.timeGMT || '').toLowerCase().indexOf(q) >= 0;
-          });
-        }
-        renderTable(list);
-        statusEl.textContent = '显示 ' + list.length + ' / ' + all.length + ' 条';
-      }
-
-      function load() {
-        statusEl.textContent = '加载中…';
-        fetch(API, { cache: 'no-store' })
-          .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-          })
-          .then(function (data) {
-            all = Array.isArray(data.cities) ? data.cities : [];
-            renderStats(all);
-            applyFilter();
-          })
-          .catch(function (err) {
-            tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败：' + esc(err.message) +
-              '<br/>请确认 Worker 已部署且 API 可访问</td></tr>';
-            statusEl.textContent = '加载失败';
-          });
-      }
-
-      document.getElementById('btn-refresh').addEventListener('click', load);
-      qEl.addEventListener('input', applyFilter);
-      load();
-      setInterval(load, 60000);
-    })();
-  </script>
+<header>
+  <div>
+    <h1>Visitor Map · 访客明细</h1>
+    <p>时间 · 地理 · IP · ASN · 机房 · UA · Referer</p>
+  </div>
+  <div>
+    <button class="primary" id="r">刷新</button>
+    <a class="btn" href="/cities" target="_blank">JSON</a>
+  </div>
+</header>
+<main>
+  <div class="stats">
+    <div class="stat"><span>总记录</span><b id="t">—</b></div>
+    <div class="stat"><span>城市数</span><b id="c">—</b></div>
+    <div class="stat"><span>国家/地区</span><b id="n">—</b></div>
+    <div class="stat"><span>最近访问</span><b id="l" style="font-size:.95rem">—</b></div>
+  </div>
+  <input id="q" type="search" placeholder="搜索城市 / IP / UA / ASN / Referer…"/>
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>北京时间</th><th>GMT</th><th>城市</th><th>地区</th><th>国家</th><th>坐标</th>
+          <th>IP</th><th>ASN</th><th>运营商</th><th>机房</th><th>时区</th><th>大陆</th>
+          <th>协议</th><th>TLS</th><th>邮编</th><th>User-Agent</th><th>Referer</th>
+        </tr>
+      </thead>
+      <tbody id="b">
+        <tr><td colspan="18" class="mu" style="text-align:center;padding:2rem">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <footer>历史记录在升级前可能缺少 IP/UA 等字段。API 可用 ?api= 指定，例如 dashboard.html?api=https://map.example.com/cities</footer>
+</main>
+<script>
+(function(){
+  var API='/cities';
+  try{var p=new URLSearchParams(location.search);if(p.get('api'))API=p.get('api');}catch(e){}
+  var all=[], B=document.getElementById('b'), Q=document.getElementById('q');
+  var j=document.querySelector('a.btn'); if(j) j.href=API;
+  function e(s){return String(s==null?'':s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"')}
+  function o(c){
+    return [c.city,c.region,c.country,c.countryCode,c.ip,c.asOrg,c.colo,c.userAgent,c.referer,c.asn,c.timezone]
+      .filter(Boolean).join(' ');
+  }
+  function draw(list){
+    document.getElementById('t').textContent=all.length;
+    var C={},N={};
+    all.forEach(function(x){if(x.city)C[x.city]=1;var k=x.countryCode||x.country;if(k)N[k]=1});
+    document.getElementById('c').textContent=Object.keys(C).length;
+    document.getElementById('n').textContent=Object.keys(N).length;
+    document.getElementById('l').textContent=all[0]?(all[0].timeBeijing||all[0].timeGMT||'—'):'—';
+    if(!list.length){B.innerHTML='<tr><td colspan="18" class="mu" style="text-align:center;padding:2rem">暂无记录</td></tr>';return}
+    B.innerHTML=list.map(function(c,i){
+      var la=c.lat!=null?Number(c.lat).toFixed(4):'—', ln=c.lng!=null?Number(c.lng).toFixed(4):'—';
+      var ua=e(c.userAgent||'—'), ref=e(c.referer||'—');
+      return '<tr>'
+        +'<td class="mu">'+(i+1)+'</td>'
+        +'<td>'+e(c.timeBeijing||'—')+'</td>'
+        +'<td class="mu">'+e(c.timeGMT||'—')+'</td>'
+        +'<td class="city">'+e(c.city||'Unknown')+'</td>'
+        +'<td>'+e(c.region||'—')+'</td>'
+        +'<td><span class="badge">'+e(c.countryCode||c.country||'—')+'</span></td>'
+        +'<td class="mu">'+la+', '+ln+'</td>'
+        +'<td>'+e(c.ip||'—')+'</td>'
+        +'<td class="mu">'+e(c.asn!=null?c.asn:'—')+'</td>'
+        +'<td>'+e(c.asOrg||'—')+'</td>'
+        +'<td class="mu">'+e(c.colo||'—')+'</td>'
+        +'<td class="mu">'+e(c.timezone||'—')+'</td>'
+        +'<td class="mu">'+e(c.continent||'—')+'</td>'
+        +'<td class="mu">'+e(c.httpProtocol||'—')+'</td>'
+        +'<td class="mu">'+e(c.tlsVersion||'—')+'</td>'
+        +'<td class="mu">'+e(c.postalCode||'—')+'</td>'
+        +'<td title="'+ua+'"><span class="ua">'+ua+'</span></td>'
+        +'<td title="'+ref+'"><span class="ref">'+ref+'</span></td>'
+        +'</tr>';
+    }).join('');
+  }
+  function filter(){
+    var q=(Q.value||'').toLowerCase().trim();
+    draw(!q?all:all.filter(function(c){return o(c).toLowerCase().indexOf(q)>=0}));
+  }
+  function load(){
+    fetch(API,{cache:'no-store'})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+      .then(function(d){all=d.cities||[];filter()})
+      .catch(function(err){B.innerHTML='<tr><td colspan="18" class="err">加载失败：'+e(err.message)+'</td></tr>'});
+  }
+  document.getElementById('r').onclick=load;
+  Q.oninput=filter;
+  load();
+  setInterval(load,60000);
+})();
+</script>
 </body>
 </html>
