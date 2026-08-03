@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visitor Map · Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b0b0e;
+      --panel: #141418;
+      --border: rgba(255,255,255,.08);
+      --text: #ececef;
+      --muted: rgba(255,255,255,.55);
+      --accent: #ff6b2c;
+      --row: rgba(255,255,255,.03);
+      --row-hover: rgba(255,107,44,.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    header p {
+      margin: .25rem 0 0;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+    button, a.btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: .45rem .85rem;
+      border-radius: 8px;
+      font-size: .85rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    button:hover, a.btn:hover { border-color: rgba(255,107,44,.45); }
+    button.primary {
+      background: rgba(255,107,44,.15);
+      border-color: rgba(255,107,44,.4);
+      color: #ffb08a;
+    }
+    main { padding: 1.25rem 1.5rem 2.5rem; max-width: 1200px; margin: 0 auto; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: .9rem 1rem;
+    }
+    .stat .label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+    .stat .value { font-size: 1.4rem; font-weight: 600; margin-top: .25rem; color: var(--accent); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+    input[type="search"] {
+      flex: 1;
+      min-width: 200px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: .55rem .85rem;
+      font-size: .9rem;
+      outline: none;
+    }
+    input[type="search"]:focus { border-color: rgba(255,107,44,.5); }
+    .meta { color: var(--muted); font-size: .8rem; }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .875rem;
+    }
+    th, td {
+      padding: .7rem .85rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #1a1a20;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      z-index: 1;
+    }
+    tbody tr:nth-child(even) { background: var(--row); }
+    tbody tr:hover { background: var(--row-hover); }
+    .city { font-weight: 600; }
+    .muted { color: var(--muted); }
+    .badge {
+      display: inline-block;
+      padding: .15rem .45rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: .75rem;
+      color: var(--muted);
+    }
+    .empty, .error {
+      padding: 2.5rem 1rem;
+      text-align: center;
+      color: var(--muted);
+    }
+    .error { color: #ff8a80; }
+    footer {
+      margin-top: 1.5rem;
+      color: var(--muted);
+      font-size: .8rem;
+      line-height: 1.5;
+    }
+    code { background: rgba(255,255,255,.06); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Visitor Map · 访客明细</h1>
+      <p>基于 IP 地理库的城市级访问记录 · 不存储精确 GPS</p>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="btn-refresh">刷新</button>
+      <a class="btn" id="link-json" href="/cities" target="_blank" rel="noopener">JSON API</a>
+    </div>
+  </header>
+  <main>
+    <div class="stats" id="stats">
+      <div class="stat"><div class="label">总记录</div><div class="value" id="s-total">—</div></div>
+      <div class="stat"><div class="label">城市数</div><div class="value" id="s-cities">—</div></div>
+      <div class="stat"><div class="label">国家/地区</div><div class="value" id="s-countries">—</div></div>
+      <div class="stat"><div class="label">最近访问</div><div class="value" id="s-latest" style="font-size:1rem">—</div></div>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜索城市、地区、国家…" autocomplete="off" />
+      <span class="meta" id="status">加载中…</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>北京时间</th>
+            <th>格林威治时间</th>
+            <th>城市</th>
+            <th>地区</th>
+            <th>国家</th>
+            <th>坐标</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="7" class="empty">加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <footer>
+      数据来源：Cloudflare / IP 地理库推导的城市级位置，可能存在误差（尤其是手机流量）。
+      本页不展示原始 IP 地址，仅展示 IP 解析后的地理位置。
+      API：<code id="api-hint">/cities</code>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var API = '/cities';
+      try {
+        var params = new URLSearchParams(location.search);
+        if (params.get('api')) API = params.get('api');
+      } catch (e) {}
+
+      var all = [];
+      var statusEl = document.getElementById('status');
+      var tbody = document.getElementById('tbody');
+      var qEl = document.getElementById('q');
+      var linkJson = document.getElementById('link-json');
+      linkJson.href = API;
+      document.getElementById('api-hint').textContent = API;
+
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function originLabel(c) {
+        var parts = [];
+        if (c.city) parts.push(c.city);
+        if (c.region && c.region !== c.city) parts.push(c.region);
+        if (c.country || c.countryCode) parts.push(c.country || c.countryCode);
+        return parts.join(' · ') || 'Unknown';
+      }
+
+      function renderStats(list) {
+        document.getElementById('s-total').textContent = String(list.length);
+        var cities = {};
+        var countries = {};
+        list.forEach(function (c) {
+          if (c.city) cities[c.city] = 1;
+          var cc = c.countryCode || c.country;
+          if (cc) countries[cc] = 1;
+        });
+        document.getElementById('s-cities').textContent = String(Object.keys(cities).length);
+        document.getElementById('s-countries').textContent = String(Object.keys(countries).length);
+        var latest = list[0];
+        document.getElementById('s-latest').textContent = latest
+          ? (latest.timeBeijing || latest.timeGMT || '—')
+          : '—';
+      }
+
+      function renderTable(list) {
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无访问记录</td></tr>';
+          return;
+        }
+        var html = '';
+        list.forEach(function (c, i) {
+          var lat = c.lat != null ? Number(c.lat).toFixed(4) : '—';
+          var lng = c.lng != null ? Number(c.lng).toFixed(4) : '—';
+          var countryExtra = (c.country && c.country !== c.countryCode) ? (' ' + esc(c.country)) : '';
+          html +=
+            '<tr>' +
+            '<td class="muted">' + (i + 1) + '</td>' +
+            '<td>' + esc(c.timeBeijing || '—') + '</td>' +
+            '<td class="muted">' + esc(c.timeGMT || '—') + '</td>' +
+            '<td class="city">' + esc(c.city || 'Unknown') + '</td>' +
+            '<td>' + esc(c.region || '—') + '</td>' +
+            '<td><span class="badge">' + esc(c.countryCode || c.country || '—') + '</span>' + countryExtra + '</td>' +
+            '<td class="muted">' + lat + ', ' + lng + '</td>' +
+            '</tr>';
+        });
+        tbody.innerHTML = html;
+      }
+
+      function applyFilter() {
+        var q = (qEl.value || '').trim().toLowerCase();
+        var list = all;
+        if (q) {
+          list = all.filter(function (c) {
+            return originLabel(c).toLowerCase().indexOf(q) >= 0 ||
+              String(c.timeBeijing || '').toLowerCase().indexOf(q) >= 0 ||
+              String(c.timeGMT || '').toLowerCase().indexOf(q) >= 0;
+          });
+        }
+        renderTable(list);
+        statusEl.textContent = '显示 ' + list.length + ' / ' + all.length + ' 条';
+      }
+
+      function load() {
+        statusEl.textContent = '加载中…';
+        fetch(API, { cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(function (data) {
+            all = Array.isArray(data.cities) ? data.cities : [];
+            renderStats(all);
+            applyFilter();
+          })
+          .catch(function (err) {
+            tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败：' + esc(err.message) +
+              '<br/>请确认 Worker 已部署且 API 可访问</td></tr>';
+            statusEl.textContent = '加载失败';
+          });
+      }
+
+      document.getElementById('btn-refresh').addEventListener('click', load);
+      qEl.addEventListener('input', applyFilter);
+      load();
+      setInterval(load, 60000);
+    })();
+  </script>
+</body>
+</html>
