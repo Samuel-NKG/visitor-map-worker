@@ -2,9 +2,9 @@
  * Visitor City Tracker - Cloudflare Worker
  *
  * GET  /  or /dashboard - Admin UI (table + map)
- * POST /hit             - Record a visit (skips common bots)
+ * POST /hit             - Record a visit (all visitors)
  * GET  /cities          - List visits
- * GET|POST /cleanup     - Fix labels + purge bot User-Agent records
+ * GET|POST /cleanup     - Fix city labels / coords only (no deletes)
  *
  * Binding: KV VISITORS
  */
@@ -86,11 +86,6 @@ const CN_NAME_MAP = {
 };
 
 
-function isBotUA(ua) {
-  if (!ua) return false;
-  return /bot|crawler|crawl|spider|slurp|facebookexternalhit|preview|headless|phantom|selenium|httpclient|python-requests|curl\/|wget|scrapy|bytespider|petalbot|semrush|ahrefs|bingpreview|yandex|baiduspider|sogou|duckduckbot|applebot|twitterbot|linkedinbot|embedly|quora|pinterest|redditbot|discordbot|telegrambot|whatsapp|skypeuri|slackbot|chatgpt|gptbot|claudebot|anthropic|perplexity|ccbot/i.test(String(ua));
-}
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -151,7 +146,7 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
   </div>
   <div>
     <button class="primary" id="r">刷新</button>
-    <button id="cleanup">清洗 Bot</button>
+    <button id="cleanup">修正城市名</button>
     <a class="btn" href="/cities" target="_blank">JSON</a>
   </div>
 </header>
@@ -178,7 +173,7 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
       </tbody>
     </table>
   </div>
-  <footer>地图圆点大小表示该位置访问次数。清洗 Bot 会删除 User-Agent 含 bot/crawler 等关键词的历史记录。</footer>
+  <footer>地图圆点大小表示该位置访问次数。所有访问都会记录；「修正城市名」只校正坐标，不删除记录。</footer>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -272,11 +267,11 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
   }
   document.getElementById('r').onclick=load;
   document.getElementById('cleanup').onclick=function(){
-    if(!confirm('删除 User-Agent 含 bot/crawler 等关键词的历史记录？')) return;
+    if(!confirm('按城市坐标表修正历史记录中的城市名和坐标（不删除任何记录）？')) return;
     fetch('/cleanup',{method:'POST'}).then(function(r){return r.json()}).then(function(d){
-      alert('已清洗。删除 Bot 约 '+(d.removedBots||0)+' 条，剩余 '+(d.total||0)+' 条');
+      alert('已修正城市名。当前记录 '+(d.total||0)+' 条');
       load();
-    }).catch(function(err){alert('清洗失败：'+err.message)});
+    }).catch(function(err){alert('修正失败：'+err.message)});
   };
   Q.oninput=filter;
   load();
@@ -383,9 +378,6 @@ async function handleHit(request, env, corsHeaders) {
 
   // Extra request metadata (for admin dashboard)
   const ua = (request.headers.get("User-Agent") || "").toString().slice(0, 300);
-  if (isBotUA(ua)) {
-    return json({ ok: true, skipped: "bot" }, 200, corsHeaders);
-  }
   const referer = (request.headers.get("Referer") || request.headers.get("Referrer") || "").toString().slice(0, 300);
   const ip = (clientIp || "").toString().slice(0, 64);
   const asn = cf.asn != null ? Number(cf.asn) : null;
@@ -675,11 +667,8 @@ async function handleCleanup(env, corsHeaders) {
   } catch {}
 
   const before = list.length;
-  const withoutBots = list.filter(function (item) {
-    return !isBotUA(item && item.userAgent);
-  });
-  const removedBots = before - withoutBots.length;
-  const fixed = withoutBots.map(fixStoredItem);
+  const fixed = list.map(fixStoredItem);
+  const removedBots = 0;
   await env.VISITORS.put("cities", JSON.stringify(fixed));
 
   const sample = fixed.slice(0, 20).map(function (x) {
@@ -701,11 +690,8 @@ async function handleCities(env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
 
-  const filtered = list.filter(function (item) {
-    return !isBotUA(item && item.userAgent);
-  });
-  let changed = filtered.length !== list.length;
-  const fixed = filtered.map(function (item) {
+  let changed = false;
+  const fixed = list.map(function (item) {
     const f = fixStoredItem(item);
     if (f.city !== item.city || f.lat !== item.lat || f.lng !== item.lng) changed = true;
     return f;
@@ -756,4 +742,3 @@ function json(data, status, extraHeaders) {
     headers: Object.assign({ "Content-Type": "application/json" }, extraHeaders),
   });
 }
-
