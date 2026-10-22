@@ -940,7 +940,9 @@ async function handleTranscriptSend(request, env, corsHeaders) {
   const email = String(form.get("email") || "").trim().toLowerCase();
   if (!validEmail(email)) return html(transcriptPage("请输入有效邮箱", email, "email"), 400);
   if (!emailAllowed(env, email)) return html(transcriptPage("这个邮箱不在允许名单里", email, "email"), 403);
-  if (!env.RESEND_API_KEY) return html(transcriptPage("邮箱服务还没配置，暂时无法发送验证码", email, "email"), 503);
+  if (!env.EMAIL || typeof env.EMAIL.send !== "function") {
+    return html(transcriptPage("Cloudflare 发信还没绑定，暂时无法发送验证码", email, "email"), 503);
+  }
 
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
   const ipKey = "otp-ip:" + ip;
@@ -952,25 +954,18 @@ async function handleTranscriptSend(request, env, corsHeaders) {
   await env.VISITORS.put("otp:" + email, JSON.stringify({ codeHash: codeHash, tries: 0 }), { expirationTtl: OTP_TTL });
   await env.VISITORS.put(ipKey, String(used + 1), { expirationTtl: 3600 });
 
-  const from = env.MAIL_FROM || "Samuel <noreply@samuelnkg.com>";
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + env.RESEND_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: from,
-      to: [email],
+  const fromEmail = env.MAIL_FROM || "noreply@samuelnkg.com";
+  try {
+    await env.EMAIL.send({
+      to: email,
+      from: { email: fromEmail, name: "Samuel" },
       subject: "Your transcript verification code",
       text: "Your verification code is " + code + ". It expires in 10 minutes.",
       html: "<p>Your verification code is <b style='font-size:20px;letter-spacing:2px'>" + code + "</b>.</p><p>It expires in 10 minutes.</p>",
-    }),
-  });
-  if (!res.ok) {
-    const detail = await res.text();
-    console.error("resend failed", res.status, detail);
-    return html(transcriptPage("验证码发送失败，请稍后再试", email, "email"), 502);
+    });
+  } catch (err) {
+    console.error("cloudflare email failed", err && err.code, err && err.message);
+    return html(transcriptPage("验证码发送失败，请确认域名发信已开通", email, "email"), 502);
   }
   return html(transcriptPage("", email, "code"));
 }
