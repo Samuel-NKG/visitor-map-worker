@@ -940,8 +940,8 @@ async function handleTranscriptSend(request, env, corsHeaders) {
   const email = String(form.get("email") || "").trim().toLowerCase();
   if (!validEmail(email)) return html(transcriptPage("请输入有效邮箱", email, "email"), 400);
   if (!emailAllowed(env, email)) return html(transcriptPage("这个邮箱不在允许名单里", email, "email"), 403);
-  if (!env.EMAIL || typeof env.EMAIL.send !== "function") {
-    return html(transcriptPage("Cloudflare 发信还没绑定，暂时无法发送验证码", email, "email"), 503);
+  if (!env.GMAIL_CLIENT_ID || !env.GMAIL_CLIENT_SECRET || !env.GMAIL_REFRESH_TOKEN) {
+    return html(transcriptPage("Gmail 发信还没配置，暂时无法发送验证码", email, "email"), 503);
   }
 
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -954,20 +954,56 @@ async function handleTranscriptSend(request, env, corsHeaders) {
   await env.VISITORS.put("otp:" + email, JSON.stringify({ codeHash: codeHash, tries: 0 }), { expirationTtl: OTP_TTL });
   await env.VISITORS.put(ipKey, String(used + 1), { expirationTtl: 3600 });
 
-  const fromEmail = env.MAIL_FROM || "noreply@samuelnkg.com";
   try {
-    await env.EMAIL.send({
-      to: email,
-      from: { email: fromEmail, name: "Samuel" },
-      subject: "Your transcript verification code",
-      text: "Your verification code is " + code + ". It expires in 10 minutes.",
-      html: "<p>Your verification code is <b style='font-size:20px;letter-spacing:2px'>" + code + "</b>.</p><p>It expires in 10 minutes.</p>",
-    });
+    await sendGmail(env, email, code);
   } catch (err) {
-    console.error("cloudflare email failed", err && err.code, err && err.message);
-    return html(transcriptPage("验证码发送失败，请确认域名发信已开通", email, "email"), 502);
+    console.error("gmail send failed", err && err.message);
+    return html(transcriptPage("验证码发送失败，请检查 Gmail 授权", email, "email"), 502);
   }
   return html(transcriptPage("", email, "code"));
+}
+
+async function sendGmail(env, to, code) {
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: env.GMAIL_CLIENT_ID,
+      client_secret: env.GMAIL_CLIENT_SECRET,
+      refresh_token: env.GMAIL_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!tokenRes.ok) throw new Error("token " + tokenRes.status + " " + await tokenRes.text());
+  const token = (await tokenRes.json()).access_token;
+  if (!token) throw new Error("no access token");
+
+  const from = env.GMAIL_FROM || "noreply@samuelnkg.com";
+  const subject = "Your transcript verification code";
+  const text = "Your verification code is " + code + ". It expires in 10 minutes.";
+  const htmlBody = "<p>Your verification code is <b style='font-size:20px;letter-spacing:2px'>" + code + "</b>.</p><p>It expires in 10 minutes.</p>";
+  const raw = [
+    "From: Samuel <" + from + ">",
+    "To: " + to,
+    "Subject: " + subject,
+    "MIME-Version: 1.0",
+    "Content-Type: text/html; charset=UTF-8",
+    "",
+    htmlBody,
+    "",
+    text,
+  ].join("\r\n");
+  const encoded = btoa(unescape(encodeURIComponent(raw))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+  const sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+  if (!sendRes.ok) throw new Error("send " + sendRes.status + " " + await sendRes.text());
 }
 
 async function handleTranscriptVerify(request, env, corsHeaders) {
