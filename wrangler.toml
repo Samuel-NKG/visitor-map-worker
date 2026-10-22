@@ -9,6 +9,12 @@ compatibility_date = "2024-09-01"
 binding = "VISITORS"
 id = "YOUR_KV_NAMESPACE_ID"
 
+# Send verification codes from samuelnkg.com via Cloudflare Email Service
+[[send_email]]
+name = "EMAIL"
+allowed_sender_addresses = ["noreply@samuelnkg.com"]
+
 # Optional: lock CORS to your site
 # [vars]
 # ALLOWED_ORIGIN = "https://www.example.com"
+# MAIL_FROM = "noreply@samuelnkg.com"
