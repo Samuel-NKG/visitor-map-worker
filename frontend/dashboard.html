@@ -67,6 +67,26 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
     </table>
   </div>
   <footer>地图圆点大小表示该位置访问次数。清洗 Bot 会删除 User-Agent 含 bot/crawler 等关键词的历史记录。Standalone: ?api=https://your-worker/cities</footer>
+
+  <h2 style="margin:2rem 0 .6rem;font-size:1.05rem">简历 / 成绩单下载</h2>
+  <div class="stats">
+    <div class="stat"><span>下载总次数</span><b id="dt">—</b></div>
+    <div class="stat"><span>CV</span><b id="dcv">—</b></div>
+    <div class="stat"><span>Transcript</span><b id="dtr">—</b></div>
+  </div>
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>文件</th><th>北京时间</th><th>城市</th><th>国家</th><th>IP</th><th>运营商</th><th>Referer</th><th>User-Agent</th>
+        </tr>
+      </thead>
+      <tbody id="db">
+        <tr><td colspan="9" class="mu" style="text-align:center;padding:2rem">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <footer>通过站点右侧链接下载才会记到这里。直接打开 /cv.pdf 或 /transcript.pdf 不会记录。</footer>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -172,7 +192,39 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
   };
   Q.oninput=filter;
   load();
+  loadDownloads();
   setInterval(load,60000);
+  setInterval(loadDownloads,60000);
+
+  function loadDownloads(){
+    var dlApi=API.replace(/\/cities\/?$/,'/downloads');
+    var DB=document.getElementById('db');
+    fetch(dlApi,{cache:'no-store'})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+      .then(function(d){
+        var list=d.downloads||[];
+        document.getElementById('dt').textContent=list.length;
+        document.getElementById('dcv').textContent=list.filter(function(x){return x.file==='cv'}).length;
+        document.getElementById('dtr').textContent=list.filter(function(x){return x.file==='transcript'}).length;
+        if(!list.length){DB.innerHTML='<tr><td colspan="9" class="mu" style="text-align:center;padding:2rem">暂无下载</td></tr>';return}
+        DB.innerHTML=list.map(function(c,i){
+          var ua=e(c.userAgent||'—'), ref=e(c.referer||'—');
+          var name=c.file==='transcript'?'Transcript':(c.file==='cv'?'CV':e(c.file||'—'));
+          return '<tr>'
+            +'<td class="mu">'+(i+1)+'</td>'
+            +'<td class="city">'+name+'</td>'
+            +'<td>'+e(c.timeBeijing||c.timeGMT||'—')+'</td>'
+            +'<td>'+e(c.city||'Unknown')+'</td>'
+            +'<td><span class="badge">'+e(c.countryCode||c.country||'—')+'</span></td>'
+            +'<td>'+e(c.ip||'—')+'</td>'
+            +'<td>'+e(c.asOrg||'—')+'</td>'
+            +'<td title="'+ref+'"><span class="ref">'+ref+'</span></td>'
+            +'<td title="'+ua+'"><span class="ua">'+ua+'</span></td>'
+            +'</tr>';
+        }).join('');
+      })
+      .catch(function(err){DB.innerHTML='<tr><td colspan="9" class="err">下载记录加载失败：'+e(err.message)+'</td></tr>'});
+  }
 })();
 </script>
 </body>
