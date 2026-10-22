@@ -302,7 +302,19 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
         return await handleDownload(request, env, ctx, corsHeaders, "cv");
       }
       if (url.pathname === "/dl/transcript" && request.method === "GET") {
-        return await handleDownload(request, env, ctx, corsHeaders, "transcript");
+        return await handleTranscriptGate(request, env, corsHeaders);
+      }
+      if (url.pathname === "/dl/transcript/send" && request.method === "POST") {
+        return await handleTranscriptSend(request, env, corsHeaders);
+      }
+      if (url.pathname === "/dl/transcript/verify" && request.method === "POST") {
+        return await handleTranscriptVerify(request, env, corsHeaders);
+      }
+      if (url.pathname === "/dl/transcript/file" && request.method === "GET") {
+        return await handleTranscriptFile(request, env, ctx, corsHeaders);
+      }
+      if (url.pathname === "/dl/transcript/upload" && request.method === "POST") {
+        return await handleTranscriptUpload(request, env, corsHeaders);
       }
       if (url.pathname === "/downloads" && request.method === "GET") {
         return await handleDownloads(env, corsHeaders);
@@ -806,6 +818,235 @@ async function handleDownloads(env, corsHeaders) {
     if (Array.isArray(raw)) list = raw;
   } catch {}
   return json({ downloads: list }, 200, corsHeaders);
+}
+
+
+const OTP_TTL = 600;
+const SESSION_TTL = 2 * 60 * 60;
+const COOKIE = "ts_auth";
+
+function transcriptPage(error, email, step) {
+  const err = error ? `<p class="err">${escapeHtml(error)}</p>` : "";
+  const showCode = step === "code";
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Transcript verification</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0b0e;color:#eee;font-family:system-ui,sans-serif}
+.card{width:min(420px,92vw);background:#141418;border:1px solid #2a2a2e;border-radius:18px;padding:1.6rem 1.4rem}
+h1{margin:0 0 .4rem;font-size:1.25rem}
+p{margin:.3rem 0 1rem;color:#aaa;font-size:.92rem;line-height:1.5}
+label{display:block;font-size:.8rem;color:#888;margin-bottom:.35rem}
+input{width:100%;box-sizing:border-box;background:#0b0b0e;border:1px solid #333;border-radius:10px;color:#fff;padding:.7rem .8rem;font-size:1rem}
+button{margin-top:.9rem;width:100%;background:#fff;color:#111;border:0;border-radius:10px;padding:.75rem;font-weight:600;cursor:pointer}
+.err{color:#ff8a80;font-size:.88rem}
+.ok{color:#9be7c4;font-size:.88rem}
+</style>
+</head>
+<body>
+<form class="card" method="POST" action="${showCode ? "/dl/transcript/verify" : "/dl/transcript/send"}">
+  <h1>成绩单验证</h1>
+  <p>打开成绩单前需要验证邮箱。验证码 10 分钟内有效。</p>
+  ${err}
+  <label>邮箱</label>
+  <input name="email" type="email" required placeholder="you@example.com" value="${escapeHtml(email || "")}"/>
+  ${showCode ? `<label style="margin-top:.8rem">验证码</label><input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="6 位数字"/>` : ""}
+  <button type="submit">${showCode ? "验证并打开" : "发送验证码"}</button>
+</form>
+</body>
+</html>`;
+}
+
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, """);
+}
+
+function html(body, status) {
+  return new Response(body, {
+    status: status || 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 120;
+}
+
+function emailAllowed(env, email) {
+  const raw = (env.ALLOWED_EMAILS || "").trim();
+  if (!raw) return true;
+  const list = raw.split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  const e = email.toLowerCase();
+  return list.some(function (rule) {
+    if (rule.startsWith("*@")) return e.endsWith(rule.slice(1));
+    return e === rule;
+  });
+}
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+}
+
+async function hmac(secret, text) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text));
+  return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function parseCookies(request) {
+  const out = {};
+  const raw = request.headers.get("Cookie") || "";
+  raw.split(";").forEach(function (part) {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+
+async function readSession(request, env) {
+  const secret = env.TRANSCRIPT_SECRET || env.ADMIN_SECRET;
+  if (!secret) return null;
+  const token = parseCookies(request)[COOKIE];
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const email = parts[0];
+  const exp = Number(parts[1]);
+  const sig = parts[2];
+  if (!email || !exp || Date.now() > exp) return null;
+  const expect = await hmac(secret, email + "." + exp);
+  if (expect !== sig) return null;
+  return email;
+}
+
+async function handleTranscriptGate(request, env, corsHeaders) {
+  const session = await readSession(request, env);
+  if (session) return Response.redirect(new URL("/dl/transcript/file", request.url).toString(), 302);
+  return html(transcriptPage("", "", "email"));
+}
+
+async function handleTranscriptSend(request, env, corsHeaders) {
+  const form = await request.formData();
+  const email = String(form.get("email") || "").trim().toLowerCase();
+  if (!validEmail(email)) return html(transcriptPage("请输入有效邮箱", email, "email"), 400);
+  if (!emailAllowed(env, email)) return html(transcriptPage("这个邮箱不在允许名单里", email, "email"), 403);
+  if (!env.RESEND_API_KEY) return html(transcriptPage("邮箱服务还没配置，暂时无法发送验证码", email, "email"), 503);
+
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ipKey = "otp-ip:" + ip;
+  const used = Number(await env.VISITORS.get(ipKey) || "0");
+  if (used >= 5) return html(transcriptPage("发送太频繁，请稍后再试", email, "email"), 429);
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash = await sha256(email + ":" + code + ":" + (env.TRANSCRIPT_SECRET || "otp"));
+  await env.VISITORS.put("otp:" + email, JSON.stringify({ codeHash: codeHash, tries: 0 }), { expirationTtl: OTP_TTL });
+  await env.VISITORS.put(ipKey, String(used + 1), { expirationTtl: 3600 });
+
+  const from = env.MAIL_FROM || "Samuel <noreply@samuelnkg.com>";
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + env.RESEND_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: from,
+      to: [email],
+      subject: "Your transcript verification code",
+      text: "Your verification code is " + code + ". It expires in 10 minutes.",
+      html: "<p>Your verification code is <b style='font-size:20px;letter-spacing:2px'>" + code + "</b>.</p><p>It expires in 10 minutes.</p>",
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    console.error("resend failed", res.status, detail);
+    return html(transcriptPage("验证码发送失败，请稍后再试", email, "email"), 502);
+  }
+  return html(transcriptPage("", email, "code"));
+}
+
+async function handleTranscriptVerify(request, env, corsHeaders) {
+  const form = await request.formData();
+  const email = String(form.get("email") || "").trim().toLowerCase();
+  const code = String(form.get("code") || "").trim();
+  if (!validEmail(email) || !/^\d{6}$/.test(code)) {
+    return html(transcriptPage("邮箱或验证码不正确", email, "code"), 400);
+  }
+  const raw = await env.VISITORS.get("otp:" + email, { type: "json" });
+  if (!raw || !raw.codeHash) return html(transcriptPage("验证码已过期，请重新发送", email, "email"), 400);
+  if ((raw.tries || 0) >= 5) return html(transcriptPage("尝试次数过多，请重新发送", email, "email"), 429);
+
+  const codeHash = await sha256(email + ":" + code + ":" + (env.TRANSCRIPT_SECRET || "otp"));
+  if (codeHash !== raw.codeHash) {
+    raw.tries = (raw.tries || 0) + 1;
+    await env.VISITORS.put("otp:" + email, JSON.stringify(raw), { expirationTtl: OTP_TTL });
+    return html(transcriptPage("验证码不正确", email, "code"), 400);
+  }
+
+  await env.VISITORS.delete("otp:" + email);
+  const secret = env.TRANSCRIPT_SECRET || env.ADMIN_SECRET;
+  if (!secret) return html(transcriptPage("服务器还没配置验证密钥", email, "email"), 503);
+  const exp = Date.now() + SESSION_TTL * 1000;
+  const sig = await hmac(secret, email + "." + exp);
+  const token = email + "." + exp + "." + sig;
+  const headers = new Headers({
+    Location: "/dl/transcript/file",
+    "Set-Cookie": COOKIE + "=" + encodeURIComponent(token) + "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" + SESSION_TTL,
+  });
+  return new Response(null, { status: 302, headers: headers });
+}
+
+async function handleTranscriptFile(request, env, ctx, corsHeaders) {
+  const email = await readSession(request, env);
+  if (!email) return Response.redirect(new URL("/dl/transcript", request.url).toString(), 302);
+
+  const save = saveDownload(request, env, "transcript").catch(function () {});
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(save);
+
+  const stored = await env.VISITORS.get("transcript-pdf", { type: "arrayBuffer" });
+  if (stored) {
+    return new Response(stored, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": "inline; filename=\"transcript.pdf\"",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
+
+  const source = env.TRANSCRIPT_SOURCE || "https://www.samuelnkg.com/transcript.pdf";
+  const pdf = await fetch(source);
+  if (!pdf.ok) return html(transcriptPage("成绩单文件暂时不可用", "", "email"), 502);
+  return new Response(pdf.body, {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": "inline; filename=\"transcript.pdf\"",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+async function handleTranscriptUpload(request, env, corsHeaders) {
+  const secret = env.ADMIN_SECRET;
+  if (!secret || request.headers.get("X-Admin-Secret") !== secret) {
+    return json({ error: "Unauthorized" }, 401, corsHeaders);
+  }
+  const bytes = await request.arrayBuffer();
+  if (!bytes || bytes.byteLength < 1000 || bytes.byteLength > 8 * 1024 * 1024) {
+    return json({ error: "Invalid PDF size" }, 400, corsHeaders);
+  }
+  await env.VISITORS.put("transcript-pdf", bytes);
+  return json({ ok: true, bytes: bytes.byteLength }, 200, corsHeaders);
 }
 
 function json(data, status, extraHeaders) {
