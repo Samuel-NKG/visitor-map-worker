@@ -298,6 +298,15 @@ footer{margin-top:1rem;color:#777;font-size:.8rem}
       if (url.pathname === "/cleanup" && (request.method === "POST" || request.method === "GET")) {
         return await handleCleanup(env, corsHeaders);
       }
+      if (url.pathname === "/dl/cv" && request.method === "GET") {
+        return await handleDownload(request, env, ctx, corsHeaders, "cv");
+      }
+      if (url.pathname === "/dl/transcript" && request.method === "GET") {
+        return await handleDownload(request, env, ctx, corsHeaders, "transcript");
+      }
+      if (url.pathname === "/downloads" && request.method === "GET") {
+        return await handleDownloads(env, corsHeaders);
+      }
       return json({ error: "Not found" }, 404, corsHeaders);
     } catch (err) {
       console.error(err);
@@ -732,6 +741,71 @@ async function handleCities(env, corsHeaders) {
   });
 
   return json({ cities: cities }, 200, corsHeaders);
+}
+
+
+const DOWNLOAD_TARGETS = {
+  cv: "https://www.samuelnkg.com/cv.pdf",
+  transcript: "https://www.samuelnkg.com/transcript.pdf",
+};
+const MAX_DOWNLOADS = 300;
+
+async function handleDownload(request, env, ctx, corsHeaders, file) {
+  const target = DOWNLOAD_TARGETS[file];
+  if (!target) return json({ error: "Unknown file" }, 404, corsHeaders);
+  const save = saveDownload(request, env, file);
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(save);
+  else await save;
+  return Response.redirect(target, 302);
+}
+
+async function saveDownload(request, env, file) {
+  const cf = request.cf || {};
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  const ua = request.headers.get("User-Agent") || "";
+  const referer = request.headers.get("Referer") || "";
+  const now = Date.now();
+  const times = formatVisitTimes(now);
+  const item = {
+    file: file,
+    ts: now,
+    timeGMT: times.timeGMT,
+    timeBeijing: times.timeBeijing,
+    city: cf.city || "",
+    region: cf.region || "",
+    country: cf.country || "",
+    countryCode: cf.country || "",
+    lat: typeof cf.latitude === "number" ? cf.latitude : null,
+    lng: typeof cf.longitude === "number" ? cf.longitude : null,
+    ip: ip,
+    asn: cf.asn != null ? cf.asn : null,
+    asOrg: cf.asOrganization || "",
+    colo: cf.colo || "",
+    timezone: cf.timezone || "",
+    continent: cf.continent || "",
+    httpProtocol: cf.httpProtocol || "",
+    tlsVersion: cf.tlsVersion || "",
+    postalCode: cf.postalCode || "",
+    userAgent: ua,
+    referer: referer,
+  };
+  let list = [];
+  try {
+    const raw = await env.VISITORS.get("downloads", { type: "json" });
+    if (Array.isArray(raw)) list = raw;
+  } catch {}
+  list.unshift(item);
+  if (list.length > MAX_DOWNLOADS) list = list.slice(0, MAX_DOWNLOADS);
+  await env.VISITORS.put("downloads", JSON.stringify(list));
+}
+
+async function handleDownloads(env, corsHeaders) {
+  let list = [];
+  try {
+    const raw = await env.VISITORS.get("downloads", { type: "json" });
+    if (Array.isArray(raw)) list = raw;
+  } catch {}
+  return json({ downloads: list }, 200, corsHeaders);
 }
 
 function json(data, status, extraHeaders) {
